@@ -3,6 +3,7 @@ package redis
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -12,7 +13,9 @@ import (
 )
 
 func TestValkeyClientIntegration(t *testing.T) {
-	testcontainers.SkipIfProviderIsNotHealthy(t)
+	if os.Getenv("AGENTICRAG_REQUIRE_DOCKER") != "1" {
+		testcontainers.SkipIfProviderIsNotHealthy(t)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	container, err := testcontainers.Run(ctx, "valkey/valkey:9.1.0-alpine",

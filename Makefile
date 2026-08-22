@@ -10,7 +10,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
-.PHONY: all fmt fmt-check test race vet build check clean
+.PHONY: all fmt fmt-check test race vet staticcheck vuln build check clean
 
 all: check
 
@@ -18,8 +18,7 @@ fmt:
 	$(GO) fmt ./...
 
 fmt-check:
-	@test -z "$$(gofmt -l $$(find . -name '*.go' -not -path './.tools/*' -not -path './.cache/*'))" || \
-		(echo "Go files need formatting; run 'make fmt'" && exit 1)
+	@./ci/check-format.sh
 
 test:
 	$(GO) test ./...
@@ -29,6 +28,12 @@ race:
 
 vet:
 	$(GO) vet ./...
+
+staticcheck:
+	staticcheck ./...
+
+vuln:
+	govulncheck ./...
 
 build:
 	mkdir -p "$(dir $(BINARY))"

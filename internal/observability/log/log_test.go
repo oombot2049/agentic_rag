@@ -37,9 +37,11 @@ func TestCorrelationMerge(t *testing.T) {
 	if got != want {
 		t.Fatalf("CorrelationFromContext() = %+v, want %+v", got, want)
 	}
+	//lint:ignore SA1012 Deliberately verifies defensive extraction from nil.
 	if zero := CorrelationFromContext(nil); zero != (Correlation{}) {
 		t.Fatalf("CorrelationFromContext(nil) = %+v", zero)
 	}
+	//lint:ignore SA1012 Deliberately verifies defensive enrichment from nil.
 	if got := CorrelationFromContext(WithCorrelation(nil, Correlation{RequestID: "request-b"})); got.RequestID != "request-b" {
 		t.Fatalf("WithCorrelation(nil) = %+v", got)
 	}

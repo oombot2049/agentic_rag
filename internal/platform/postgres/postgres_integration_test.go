@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -14,7 +15,9 @@ import (
 
 func integrationPool(t *testing.T) *Pool {
 	t.Helper()
-	testcontainers.SkipIfProviderIsNotHealthy(t)
+	if os.Getenv("AGENTICRAG_REQUIRE_DOCKER") != "1" {
+		testcontainers.SkipIfProviderIsNotHealthy(t)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	container, err := tcpostgres.Run(ctx, "postgres:18.6-alpine",

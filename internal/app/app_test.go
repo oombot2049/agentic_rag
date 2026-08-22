@@ -184,6 +184,7 @@ func TestRunCancellationUsesFreshShutdownContext(t *testing.T) {
 	if component.stopContextCanceled {
 		t.Fatal("Run passed canceled run context to Stop")
 	}
+	//lint:ignore SA1012 Deliberately verifies the defensive nil-context contract.
 	if err := application.Run(nil); err == nil {
 		t.Fatal("Run(nil) error = nil")
 	}
