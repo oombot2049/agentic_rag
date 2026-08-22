@@ -42,6 +42,8 @@ supported: a changed configuration requires a rolling restart.
 | PostgreSQL | `AGENTICRAG_POSTGRES_MAX_OPEN_CONNS` | integer/50 | 1–500 |
 | PostgreSQL | `AGENTICRAG_POSTGRES_MAX_IDLE_CONNS` | integer/10 | 0–max open |
 | PostgreSQL | `AGENTICRAG_POSTGRES_CONN_MAX_LIFETIME` | duration/30m | 1m–24h |
+| PostgreSQL | `AGENTICRAG_POSTGRES_CONNECT_TIMEOUT` | duration/5s | 100ms–1m |
+| PostgreSQL | `AGENTICRAG_POSTGRES_HEALTH_TIMEOUT` | duration/2s | 100ms–30s |
 | Redis | `AGENTICRAG_REDIS_ADDRESS` | string/`127.0.0.1:6379` | valid TCP host:port |
 | Redis | `AGENTICRAG_REDIS_PASSWORD` | secret/empty | optional |
 | Redis | `AGENTICRAG_REDIS_DB` | integer/0 | 0–15 |
