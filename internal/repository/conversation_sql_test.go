@@ -110,6 +110,10 @@ type conversationQuery struct {
 	rows [][]driver.Value
 	err  error
 }
+type conversationExec struct {
+	affected int64
+	err      error
+}
 type conversationCall struct {
 	query string
 	args  []driver.NamedValue
@@ -117,12 +121,23 @@ type conversationCall struct {
 type conversationScript struct {
 	mu      sync.Mutex
 	queries []conversationQuery
+	execs   []conversationExec
 	seen    []conversationCall
 }
 
 var conversationDriverSequence atomic.Uint64
 
 func openConversationRepository(t *testing.T, script *conversationScript) *Conversation {
+	t.Helper()
+	db := openConversationDB(t, script)
+	repository, err := NewConversation(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repository
+}
+
+func openConversationDB(t *testing.T, script *conversationScript) *sql.DB {
 	t.Helper()
 	name := fmt.Sprintf("conversation-script-%d", conversationDriverSequence.Add(1))
 	sql.Register(name, conversationDriver{script: script})
@@ -131,11 +146,7 @@ func openConversationRepository(t *testing.T, script *conversationScript) *Conve
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	repository, err := NewConversation(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return repository
+	return db
 }
 
 type conversationDriver struct{ script *conversationScript }
@@ -170,6 +181,20 @@ func (c *conversationConn) QueryContext(_ context.Context, query string, args []
 		columns = len(result.rows[0])
 	}
 	return &conversationRows{rows: result.rows, columns: columns}, nil
+}
+func (c *conversationConn) ExecContext(_ context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	c.script.mu.Lock()
+	defer c.script.mu.Unlock()
+	c.script.seen = append(c.script.seen, conversationCall{query: query, args: append([]driver.NamedValue(nil), args...)})
+	if len(c.script.execs) == 0 {
+		return nil, errors.New("unexpected exec")
+	}
+	result := c.script.execs[0]
+	c.script.execs = c.script.execs[1:]
+	if result.err != nil {
+		return nil, result.err
+	}
+	return driver.RowsAffected(result.affected), nil
 }
 
 type conversationRows struct {

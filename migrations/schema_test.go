@@ -31,9 +31,35 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 	want := []string{
 		downMigration, upMigration,
 		"000002_idempotency_records.down.sql", "000002_idempotency_records.up.sql",
+		"000003_execution_control.down.sql", "000003_execution_control.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestExecutionControlMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000003_execution_control.up.sql")
+	for _, fragment := range []string{
+		"execution_version bigint NOT NULL DEFAULT 1",
+		"lease_token bigint NOT NULL DEFAULT 0",
+		"lease_expires_at timestamptz",
+		"ADD COLUMN row_version bigint NOT NULL DEFAULT 1",
+		"CREATE TABLE run_checkpoints",
+		"PRIMARY KEY (tenant_id, run_id)",
+		"octet_length(payload::text) <= 1048576",
+		"ON runs (tenant_id, status, lease_expires_at, id)",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("execution migration missing %q", fragment)
+		}
+	}
+	down := readMigration(t, "000003_execution_control.down.sql")
+	for _, fragment := range []string{"DROP TABLE run_checkpoints", "DROP COLUMN execution_version"} {
+		if !strings.Contains(down, fragment) {
+			t.Errorf("execution down migration missing %q", fragment)
+		}
 	}
 }
 
