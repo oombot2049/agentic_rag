@@ -33,9 +33,32 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000002_idempotency_records.down.sql", "000002_idempotency_records.up.sql",
 		"000003_execution_control.down.sql", "000003_execution_control.up.sql",
 		"000004_transactional_outbox.down.sql", "000004_transactional_outbox.up.sql",
+		"000005_artifact_metadata.down.sql", "000005_artifact_metadata.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestArtifactMetadataMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000005_artifact_metadata.up.sql")
+	for _, fragment := range []string{
+		"CREATE TABLE artifact_metadata", "PRIMARY KEY (tenant_id, id)",
+		"content_sha256 bytea NOT NULL", "octet_length(content_sha256) = 32",
+		"size_bytes bigint NOT NULL", "'SSE-S3', 'SSE-KMS', 'CLIENT'",
+		"expires_at > created_at", "artifact_metadata_expiry_idx",
+		"ON artifact_metadata (tenant_id, expires_at, id)",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("Artifact migration missing %q", fragment)
+		}
+	}
+	if strings.Contains(up, "payload") || strings.Contains(up, "content bytea") {
+		t.Fatal("Artifact migration stores payload bytes in PostgreSQL")
+	}
+	if strings.TrimSpace(readMigration(t, "000005_artifact_metadata.down.sql")) != "DROP TABLE artifact_metadata;" {
+		t.Fatal("Artifact down migration must drop only metadata")
 	}
 }
 

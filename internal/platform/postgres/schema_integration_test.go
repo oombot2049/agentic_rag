@@ -53,10 +53,10 @@ func TestCoreSchemaMigrationRoundTripAndConstraints(t *testing.T) {
 		t.Fatalf("committed run status = %s", state)
 	}
 
-	if err := migrator.Down(ctx, 4); err != nil {
+	if err := migrator.Down(ctx, 5); err != nil {
 		t.Fatalf("Down: %v", err)
 	}
-	for _, table := range []string{"sessions", "turns", "messages", "runs", "steps", "attempts", "outbox_events"} {
+	for _, table := range []string{"sessions", "turns", "messages", "runs", "steps", "attempts", "outbox_events", "artifact_metadata"} {
 		var exists bool
 		if err := pool.QueryRowContext(ctx, `SELECT to_regclass('public.' || $1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatal(err)
