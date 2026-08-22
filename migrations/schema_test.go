@@ -28,9 +28,34 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	want := []string{downMigration, upMigration}
+	want := []string{
+		downMigration, upMigration,
+		"000002_idempotency_records.down.sql", "000002_idempotency_records.up.sql",
+	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestIdempotencyMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000002_idempotency_records.up.sql")
+	for _, fragment := range []string{
+		"PRIMARY KEY (\n        tenant_id, authenticated_subject_id, operation, idempotency_key",
+		"octet_length(request_hash) = 32",
+		"'IN_PROGRESS', 'SUCCEEDED', 'FAILED_FINAL'",
+		"expires_at >= created_at + interval '24 hours'",
+		"ON idempotency_records (tenant_id, expires_at)",
+		"response_body jsonb",
+		"created_at timestamptz", "updated_at timestamptz", "expires_at timestamptz",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("idempotency migration missing %q", fragment)
+		}
+	}
+	down := readMigration(t, "000002_idempotency_records.down.sql")
+	if strings.TrimSpace(down) != "DROP TABLE idempotency_records;" {
+		t.Fatalf("unexpected idempotency down migration: %q", down)
 	}
 }
 

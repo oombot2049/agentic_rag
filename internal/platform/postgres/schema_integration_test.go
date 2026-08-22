@@ -53,7 +53,7 @@ func TestCoreSchemaMigrationRoundTripAndConstraints(t *testing.T) {
 		t.Fatalf("committed run status = %s", state)
 	}
 
-	if err := migrator.Down(ctx, 1); err != nil {
+	if err := migrator.Down(ctx, 2); err != nil {
 		t.Fatalf("Down: %v", err)
 	}
 	for _, table := range []string{"sessions", "turns", "messages", "runs", "steps", "attempts"} {
