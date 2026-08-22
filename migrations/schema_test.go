@@ -32,9 +32,29 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		downMigration, upMigration,
 		"000002_idempotency_records.down.sql", "000002_idempotency_records.up.sql",
 		"000003_execution_control.down.sql", "000003_execution_control.up.sql",
+		"000004_transactional_outbox.down.sql", "000004_transactional_outbox.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestTransactionalOutboxMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000004_transactional_outbox.up.sql")
+	for _, fragment := range []string{
+		"CREATE TABLE outbox_events", "PRIMARY KEY (tenant_id, id)",
+		"payload jsonb NOT NULL", "octet_length(payload::text) BETWEEN 1 AND 1048576",
+		"'PENDING', 'PUBLISHED', 'DEAD'", "claim_token bigint NOT NULL DEFAULT 0",
+		"outbox_events_ready_idx", "(tenant_id, status, available_at, occurred_at, id)",
+		"outbox_events_cleanup_idx", "WHERE status = 'PUBLISHED'",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("outbox migration missing %q", fragment)
+		}
+	}
+	if strings.TrimSpace(readMigration(t, "000004_transactional_outbox.down.sql")) != "DROP TABLE outbox_events;" {
+		t.Fatal("outbox down migration must drop only its table")
 	}
 }
 
