@@ -223,6 +223,16 @@ func (c Config) validate() []FieldError {
 	return issues
 }
 
+// Validate checks an already constructed Config. It is primarily used by
+// explicit composition roots and tests whose loader is injected.
+func (c Config) Validate() error {
+	issues := c.validate()
+	if len(issues) == 0 {
+		return nil
+	}
+	return newValidationError(issues)
+}
+
 func validateAddress(issues *[]FieldError, key, value string) {
 	if _, _, err := net.SplitHostPort(value); err != nil {
 		*issues = append(*issues, FieldError{Key: key, Rule: "must be a valid TCP host:port"})

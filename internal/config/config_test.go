@@ -171,3 +171,14 @@ func TestLoadReadsEnvironment(t *testing.T) {
 		t.Fatalf("Load() did not read environment: %+v", cfg.SafeFields())
 	}
 }
+
+func TestValidateConstructedConfig(t *testing.T) {
+	cfg := Defaults()
+	if err := cfg.Validate(); err == nil || !IsValidationError(err) {
+		t.Fatalf("Defaults().Validate() error = %v, want required DSN validation", err)
+	}
+	cfg.Postgres.DSN = NewSecret(testDSN)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid constructed Config.Validate() error = %v", err)
+	}
+}
