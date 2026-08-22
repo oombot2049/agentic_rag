@@ -1,0 +1,30 @@
+# Build and test output
+/bin/
+/dist/
+/coverage/
+*.coverprofile
+*.test
+
+# Local tools and caches
+/.cache/
+/.tools/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local logs and temporary files
+*.log
+*.tmp
+*.inspect.ndjson
