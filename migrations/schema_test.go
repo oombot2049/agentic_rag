@@ -34,9 +34,26 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000003_execution_control.down.sql", "000003_execution_control.up.sql",
 		"000004_transactional_outbox.down.sql", "000004_transactional_outbox.up.sql",
 		"000005_artifact_metadata.down.sql", "000005_artifact_metadata.up.sql",
+		"000006_session_metadata.down.sql", "000006_session_metadata.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestSessionMetadataMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000006_session_metadata.up.sql")
+	for _, fragment := range []string{
+		"ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}'::jsonb",
+		"jsonb_typeof(metadata) = 'object'", "jsonb_object_length(metadata) <= 20",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("Session metadata migration missing %q", fragment)
+		}
+	}
+	if strings.TrimSpace(readMigration(t, "000006_session_metadata.down.sql")) != "ALTER TABLE sessions DROP COLUMN metadata;" {
+		t.Fatal("Session metadata down migration must drop only its column")
 	}
 }
 

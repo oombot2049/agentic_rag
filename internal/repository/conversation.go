@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -33,15 +34,25 @@ func NewConversation(db DBTX) (*Conversation, error) {
 }
 
 func (r *Conversation) InsertSession(ctx context.Context, value *domain.Session) error {
+	return r.InsertSessionWithMetadata(ctx, value, map[string]string{})
+}
+
+// InsertSessionWithMetadata persists a new aggregate and a defensive JSON copy
+// of caller annotations. Metadata is not part of aggregate concurrency state.
+func (r *Conversation) InsertSessionWithMetadata(ctx context.Context, value *domain.Session, metadata map[string]string) error {
 	if value == nil {
 		return fmt.Errorf("%w: session is nil", ErrInvalidArgument)
 	}
+	encodedMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("%w: encode session metadata: %v", ErrInvalidArgument, err)
+	}
 	activeRunID, active := value.ActiveRunID()
 	headTurnID, head := value.HeadTurnID()
-	_, err := r.db.ExecContext(ctx, insertSessionSQL,
+	_, err = r.db.ExecContext(ctx, insertSessionSQL,
 		value.TenantID().String(), value.ID().String(), value.ContextVersion(), value.RowVersion(),
 		value.NextTurnSequence(), value.CommittedTurnSequence(), optionalString(activeRunID.String(), active),
-		optionalString(headTurnID.String(), head), value.CreatedAt(), value.UpdatedAt(),
+		optionalString(headTurnID.String(), head), value.CreatedAt(), value.UpdatedAt(), string(encodedMetadata),
 	)
 	if err != nil {
 		return fmt.Errorf("insert session: %w", err)
@@ -307,8 +318,8 @@ func optionalString(value string, present bool) any {
 
 const insertSessionSQL = `INSERT INTO sessions(
     tenant_id,id,context_version,row_version,next_turn_sequence,committed_turn_sequence,
-    active_run_id,head_turn_id,created_at,updated_at
-) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+    active_run_id,head_turn_id,created_at,updated_at,metadata
+) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`
 
 const insertTurnSQL = `INSERT INTO turns(
     tenant_id,id,session_id,turn_sequence,base_context_version,user_message_id,status,
