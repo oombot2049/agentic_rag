@@ -47,6 +47,7 @@ func TestLoadSourcesValidation(t *testing.T) {
 		{name: "bad environment", values: MapSource{keyPostgresDSN: testDSN, keyEnvironment: "staging"}, keys: []string{keyEnvironment}},
 		{name: "bad duration", values: MapSource{keyPostgresDSN: testDSN, keyServerShutdownTimeout: "eventually"}, keys: []string{keyServerShutdownTimeout}},
 		{name: "duration below minimum", values: MapSource{keyPostgresDSN: testDSN, keyServerReadHeaderTimeout: "50ms"}, keys: []string{keyServerReadHeaderTimeout}},
+		{name: "idle shorter than header", values: MapSource{keyPostgresDSN: testDSN, keyServerIdleTimeout: "1s"}, keys: []string{keyServerIdleTimeout}},
 		{name: "bad integer", values: MapSource{keyPostgresDSN: testDSN, keyRedisDB: "secret-number"}, keys: []string{keyRedisDB}},
 		{name: "integer above maximum", values: MapSource{keyPostgresDSN: testDSN, keyRedisDB: "16"}, keys: []string{keyRedisDB}},
 		{name: "redis idle exceeds pool", values: MapSource{keyPostgresDSN: testDSN, keyRedisPoolSize: "4", keyRedisMinIdleConns: "5"}, keys: []string{keyRedisMinIdleConns}},
@@ -80,7 +81,9 @@ func TestLoadSourcesValidation(t *testing.T) {
 func TestLoadSourcesParsesBoundaries(t *testing.T) {
 	cfg, err := LoadSources(MapSource{
 		keyPostgresDSN:             testDSN,
+		keyServerReadTimeout:       "5m",
 		keyServerReadHeaderTimeout: "100ms",
+		keyServerIdleTimeout:       "5m",
 		keyServerShutdownTimeout:   "2m",
 		keyPostgresMaxOpenConns:    "500",
 		keyPostgresMaxIdleConns:    "0",
@@ -99,7 +102,8 @@ func TestLoadSourcesParsesBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSources() error = %v", err)
 	}
-	if cfg.Server.ReadHeaderTimeout != 100*time.Millisecond || cfg.Server.ShutdownTimeout != 2*time.Minute {
+	if cfg.Server.ReadTimeout != 5*time.Minute || cfg.Server.ReadHeaderTimeout != 100*time.Millisecond ||
+		cfg.Server.IdleTimeout != 5*time.Minute || cfg.Server.ShutdownTimeout != 2*time.Minute {
 		t.Fatalf("duration boundaries not retained: %+v", cfg.Server)
 	}
 	if cfg.Postgres.MaxOpenConns != 500 || cfg.Postgres.MaxIdleConns != 0 || cfg.Redis.DB != 15 {

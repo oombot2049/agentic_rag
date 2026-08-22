@@ -36,7 +36,9 @@ supported: a changed configuration requires a rolling restart.
 |---|---|---|---|
 | process | `AGENTICRAG_ENVIRONMENT` | enum/`development` | development, test, production |
 | server | `AGENTICRAG_SERVER_ADDRESS` | string/`:8080` | valid TCP host:port |
+| server | `AGENTICRAG_SERVER_READ_TIMEOUT` | duration/`30s` | 100ms–5m |
 | server | `AGENTICRAG_SERVER_READ_HEADER_TIMEOUT` | duration/`5s` | 100ms–30s |
+| server | `AGENTICRAG_SERVER_IDLE_TIMEOUT` | duration/`2m` | 100ms–5m; ≥ header timeout |
 | server | `AGENTICRAG_SERVER_SHUTDOWN_TIMEOUT` | duration/`15s` | 1s–2m |
 | PostgreSQL | `AGENTICRAG_POSTGRES_DSN` | secret/required | non-empty |
 | PostgreSQL | `AGENTICRAG_POSTGRES_MAX_OPEN_CONNS` | integer/50 | 1–500 |

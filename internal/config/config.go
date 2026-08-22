@@ -14,7 +14,9 @@ import (
 const (
 	keyEnvironment             = "AGENTICRAG_ENVIRONMENT"
 	keyServerAddress           = "AGENTICRAG_SERVER_ADDRESS"
+	keyServerReadTimeout       = "AGENTICRAG_SERVER_READ_TIMEOUT"
 	keyServerReadHeaderTimeout = "AGENTICRAG_SERVER_READ_HEADER_TIMEOUT"
+	keyServerIdleTimeout       = "AGENTICRAG_SERVER_IDLE_TIMEOUT"
 	keyServerShutdownTimeout   = "AGENTICRAG_SERVER_SHUTDOWN_TIMEOUT"
 	keyPostgresDSN             = "AGENTICRAG_POSTGRES_DSN"
 	keyPostgresMaxOpenConns    = "AGENTICRAG_POSTGRES_MAX_OPEN_CONNS"
@@ -37,7 +39,7 @@ const (
 )
 
 var knownKeys = []string{
-	keyEnvironment, keyServerAddress, keyServerReadHeaderTimeout,
+	keyEnvironment, keyServerAddress, keyServerReadTimeout, keyServerReadHeaderTimeout, keyServerIdleTimeout,
 	keyServerShutdownTimeout, keyPostgresDSN, keyPostgresMaxOpenConns,
 	keyPostgresMaxIdleConns, keyPostgresConnLifetime, keyRedisAddress,
 	keyPostgresConnectTimeout, keyPostgresHealthTimeout, keyRedisPassword, keyRedisDB,
@@ -66,7 +68,9 @@ const (
 
 type ServerConfig struct {
 	Address           string
+	ReadTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
+	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
 }
 
@@ -113,7 +117,9 @@ func Defaults() Config {
 		Environment: EnvironmentDevelopment,
 		Server: ServerConfig{
 			Address:           ":8080",
+			ReadTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       2 * time.Minute,
 			ShutdownTimeout:   15 * time.Second,
 		},
 		Postgres: PostgresConfig{
@@ -177,7 +183,9 @@ func LoadSources(sources ...Source) (Config, error) {
 	var issues []FieldError
 	applyString(values, keyEnvironment, func(value string) { cfg.Environment = Environment(value) })
 	applyString(values, keyServerAddress, func(value string) { cfg.Server.Address = value })
+	applyDuration(values, keyServerReadTimeout, &cfg.Server.ReadTimeout, &issues)
 	applyDuration(values, keyServerReadHeaderTimeout, &cfg.Server.ReadHeaderTimeout, &issues)
+	applyDuration(values, keyServerIdleTimeout, &cfg.Server.IdleTimeout, &issues)
 	applyDuration(values, keyServerShutdownTimeout, &cfg.Server.ShutdownTimeout, &issues)
 	applyString(values, keyPostgresDSN, func(value string) { cfg.Postgres.DSN = NewSecret(value) })
 	applyInt(values, keyPostgresMaxOpenConns, &cfg.Postgres.MaxOpenConns, &issues)
@@ -243,7 +251,12 @@ func (c Config) validate() []FieldError {
 		issues = append(issues, FieldError{Key: keyEnvironment, Rule: "must be development, test, or production"})
 	}
 	validateAddress(&issues, keyServerAddress, c.Server.Address)
+	validateRange(&issues, keyServerReadTimeout, c.Server.ReadTimeout, 100*time.Millisecond, 5*time.Minute)
 	validateRange(&issues, keyServerReadHeaderTimeout, c.Server.ReadHeaderTimeout, 100*time.Millisecond, 30*time.Second)
+	validateRange(&issues, keyServerIdleTimeout, c.Server.IdleTimeout, 100*time.Millisecond, 5*time.Minute)
+	if c.Server.IdleTimeout < c.Server.ReadHeaderTimeout {
+		issues = append(issues, FieldError{Key: keyServerIdleTimeout, Rule: "must not be shorter than read header timeout"})
+	}
 	validateRange(&issues, keyServerShutdownTimeout, c.Server.ShutdownTimeout, time.Second, 2*time.Minute)
 	if c.Postgres.DSN.IsZero() {
 		issues = append(issues, FieldError{Key: keyPostgresDSN, Rule: "is required"})
@@ -317,7 +330,9 @@ func (c Config) SafeFields() map[string]any {
 	return map[string]any{
 		"environment":                c.Environment,
 		"server.address":             c.Server.Address,
+		"server.read_timeout":        c.Server.ReadTimeout,
 		"server.read_header_timeout": c.Server.ReadHeaderTimeout,
+		"server.idle_timeout":        c.Server.IdleTimeout,
 		"server.shutdown_timeout":    c.Server.ShutdownTimeout,
 		"postgres.max_open_conns":    c.Postgres.MaxOpenConns,
 		"postgres.max_idle_conns":    c.Postgres.MaxIdleConns,
