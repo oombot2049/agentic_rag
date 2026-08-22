@@ -44,19 +44,28 @@ type Lease struct {
 
 type RunRecord struct {
 	Run              *domain.Run
+	MaxSteps         int
 	ExecutionVersion uint64
 	Lease            *Lease
 }
 
 func (r *Execution) InsertRun(ctx context.Context, value *domain.Run) error {
+	return r.InsertRunWithOptions(ctx, value, 12)
+}
+
+// InsertRunWithOptions persists the normalized execution policy alongside the Run.
+func (r *Execution) InsertRunWithOptions(ctx context.Context, value *domain.Run, maxSteps int) error {
 	if value == nil {
 		return fmt.Errorf("%w: run is nil", ErrInvalidArgument)
+	}
+	if maxSteps < 1 || maxSteps > 20 {
+		return fmt.Errorf("%w: max steps must be between 1 and 20", ErrInvalidArgument)
 	}
 	outputMessageID, hasOutput := value.OutputMessageID()
 	_, err := r.db.ExecContext(ctx, insertRunSQL,
 		value.TenantID().String(), value.ID().String(), value.SessionID().String(), value.TurnID().String(),
 		value.RunNo(), value.BaseContextVersion(), value.Status().String(), optionalString(outputMessageID.String(), hasOutput),
-		value.CreatedAt(), value.UpdatedAt(),
+		value.CreatedAt(), value.UpdatedAt(), maxSteps,
 	)
 	if err != nil {
 		return fmt.Errorf("insert run: %w", err)
@@ -473,9 +482,13 @@ func scanRunRecord(row executionRowScanner) (RunRecord, error) {
 	var expires sql.NullTime
 	var result RunRecord
 	err := row.Scan(&tenant, &run, &session, &turn, &snapshot.RunNo, &snapshot.BaseContextVersion,
-		&status, &output, &snapshot.CreatedAt, &snapshot.UpdatedAt, &result.ExecutionVersion, &owner, &token, &expires)
+		&status, &output, &snapshot.CreatedAt, &snapshot.UpdatedAt, &result.MaxSteps,
+		&result.ExecutionVersion, &owner, &token, &expires)
 	if err != nil {
 		return RunRecord{}, err
+	}
+	if result.MaxSteps < 1 || result.MaxSteps > 20 {
+		return RunRecord{}, errors.New("stored max_steps is invalid")
 	}
 	var parseErr error
 	if snapshot.TenantID, parseErr = domain.ParseTenantID(tenant); parseErr != nil {
@@ -560,9 +573,9 @@ func scanAttemptRecord(row executionRowScanner) (AttemptRecord, error) {
 }
 
 const runColumns = `tenant_id,id,session_id,turn_id,run_no,base_context_version,status,
-    output_message_id,created_at,updated_at,execution_version,lease_owner,lease_token,lease_expires_at`
+    output_message_id,created_at,updated_at,max_steps,execution_version,lease_owner,lease_token,lease_expires_at`
 const insertRunSQL = `INSERT INTO runs(tenant_id,id,session_id,turn_id,run_no,base_context_version,
-    status,output_message_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`
+    status,output_message_id,created_at,updated_at,max_steps) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`
 const selectRunSQL = `SELECT ` + runColumns + ` FROM runs WHERE tenant_id=$1 AND id=$2`
 const acquireLeaseSQL = `UPDATE runs SET lease_owner=$3,lease_token=lease_token+1,lease_expires_at=$6,
     execution_version=execution_version+1,updated_at=$5

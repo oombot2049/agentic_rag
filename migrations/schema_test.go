@@ -35,9 +35,26 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000004_transactional_outbox.down.sql", "000004_transactional_outbox.up.sql",
 		"000005_artifact_metadata.down.sql", "000005_artifact_metadata.up.sql",
 		"000006_session_metadata.down.sql", "000006_session_metadata.up.sql",
+		"000007_run_execution_options.down.sql", "000007_run_execution_options.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestRunExecutionOptionsMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000007_run_execution_options.up.sql")
+	for _, fragment := range []string{
+		"ADD COLUMN max_steps smallint NOT NULL DEFAULT 12",
+		"max_steps BETWEEN 1 AND 20",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("Run execution options migration missing %q", fragment)
+		}
+	}
+	if strings.TrimSpace(readMigration(t, "000007_run_execution_options.down.sql")) != "ALTER TABLE runs DROP COLUMN max_steps;" {
+		t.Fatal("Run execution options down migration must drop only its column")
 	}
 }
 

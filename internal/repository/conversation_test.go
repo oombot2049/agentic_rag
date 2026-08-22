@@ -55,6 +55,28 @@ func TestInsertAggregatesUseTenantFirstAndDomainValues(t *testing.T) {
 	}
 }
 
+func TestInsertRunPersistsNormalizedExecutionOptions(t *testing.T) {
+	t.Parallel()
+	database := &captureDB{}
+	repository, err := NewExecution(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := domain.NewRun("run_0001", "ten_0001", "ses_0001", "trn_0001", 1, 0, repositoryTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.InsertRunWithOptions(context.Background(), run, 7); err != nil {
+		t.Fatal(err)
+	}
+	if len(database.args) != 11 || database.args[10] != 7 || !stringsContain(database.query, "max_steps") {
+		t.Fatalf("InsertRun arguments=%#v query=%s", database.args, database.query)
+	}
+	if err := repository.InsertRunWithOptions(context.Background(), run, 0); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("invalid max steps = %v", err)
+	}
+}
+
 func TestInsertValidationAndDatabaseErrors(t *testing.T) {
 	t.Parallel()
 	if _, err := NewConversation(nil); !errors.Is(err, ErrInvalidArgument) {

@@ -52,7 +52,7 @@ func TestExecutionLeaseLifecycleAndClassification(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || record.ExecutionVersion != test.wantVersion {
+			if err != nil || record.ExecutionVersion != test.wantVersion || record.MaxSteps != 12 {
 				t.Fatalf("record = %+v/%v", record, err)
 			}
 		})
@@ -185,7 +185,7 @@ func validAuthority() WorkerAuthority {
 }
 
 func runRecordRow(version uint64, owner any, token uint64, expires any) []driver.Value {
-	return []driver.Value{"ten_0001", "run_0001", "ses_0001", "trn_0001", int64(1), int64(0), "QUEUED", nil, repositoryTime, repositoryTime, int64(version), owner, int64(token), expires}
+	return []driver.Value{"ten_0001", "run_0001", "ses_0001", "trn_0001", int64(1), int64(0), "QUEUED", nil, repositoryTime, repositoryTime, int64(12), int64(version), owner, int64(token), expires}
 }
 
 func stepRecordRow(status string, version uint64) []driver.Value {
