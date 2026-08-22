@@ -47,6 +47,14 @@ supported: a changed configuration requires a rolling restart.
 | Redis | `AGENTICRAG_REDIS_ADDRESS` | string/`127.0.0.1:6379` | valid TCP host:port |
 | Redis | `AGENTICRAG_REDIS_PASSWORD` | secret/empty | optional |
 | Redis | `AGENTICRAG_REDIS_DB` | integer/0 | 0–15 |
+| Redis | `AGENTICRAG_REDIS_DIAL_TIMEOUT` | duration/5s | 100ms–1m |
+| Redis | `AGENTICRAG_REDIS_READ_TIMEOUT` | duration/2s | 100ms–30s |
+| Redis | `AGENTICRAG_REDIS_WRITE_TIMEOUT` | duration/2s | 100ms–30s |
+| Redis | `AGENTICRAG_REDIS_POOL_TIMEOUT` | duration/2s | 100ms–1m |
+| Redis | `AGENTICRAG_REDIS_HEALTH_TIMEOUT` | duration/2s | 100ms–30s |
+| Redis | `AGENTICRAG_REDIS_POOL_SIZE` | integer/100 | 1–1000 |
+| Redis | `AGENTICRAG_REDIS_MIN_IDLE_CONNS` | integer/5 | 0–pool size |
+| Redis | `AGENTICRAG_REDIS_MAX_TTL` | duration/24h | 1s–24h |
 | logging | `AGENTICRAG_LOG_LEVEL` | enum/`info` | debug, info, warn, error |
 
 These are process/bootstrap values, not tenant policy. Capacity and Agent limits

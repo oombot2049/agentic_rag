@@ -25,6 +25,14 @@ const (
 	keyRedisAddress            = "AGENTICRAG_REDIS_ADDRESS"
 	keyRedisPassword           = "AGENTICRAG_REDIS_PASSWORD"
 	keyRedisDB                 = "AGENTICRAG_REDIS_DB"
+	keyRedisDialTimeout        = "AGENTICRAG_REDIS_DIAL_TIMEOUT"
+	keyRedisReadTimeout        = "AGENTICRAG_REDIS_READ_TIMEOUT"
+	keyRedisWriteTimeout       = "AGENTICRAG_REDIS_WRITE_TIMEOUT"
+	keyRedisPoolTimeout        = "AGENTICRAG_REDIS_POOL_TIMEOUT"
+	keyRedisHealthTimeout      = "AGENTICRAG_REDIS_HEALTH_TIMEOUT"
+	keyRedisPoolSize           = "AGENTICRAG_REDIS_POOL_SIZE"
+	keyRedisMinIdleConns       = "AGENTICRAG_REDIS_MIN_IDLE_CONNS"
+	keyRedisMaxTTL             = "AGENTICRAG_REDIS_MAX_TTL"
 	keyLogLevel                = "AGENTICRAG_LOG_LEVEL"
 )
 
@@ -32,7 +40,9 @@ var knownKeys = []string{
 	keyEnvironment, keyServerAddress, keyServerReadHeaderTimeout,
 	keyServerShutdownTimeout, keyPostgresDSN, keyPostgresMaxOpenConns,
 	keyPostgresMaxIdleConns, keyPostgresConnLifetime, keyRedisAddress,
-	keyPostgresConnectTimeout, keyPostgresHealthTimeout, keyRedisPassword, keyRedisDB, keyLogLevel,
+	keyPostgresConnectTimeout, keyPostgresHealthTimeout, keyRedisPassword, keyRedisDB,
+	keyRedisDialTimeout, keyRedisReadTimeout, keyRedisWriteTimeout, keyRedisPoolTimeout,
+	keyRedisHealthTimeout, keyRedisPoolSize, keyRedisMinIdleConns, keyRedisMaxTTL, keyLogLevel,
 }
 
 // Environment identifies the deployment behavior class.
@@ -70,9 +80,17 @@ type PostgresConfig struct {
 }
 
 type RedisConfig struct {
-	Address  string
-	Password Secret
-	DB       int
+	Address       string
+	Password      Secret
+	DB            int
+	DialTimeout   time.Duration
+	ReadTimeout   time.Duration
+	WriteTimeout  time.Duration
+	PoolTimeout   time.Duration
+	HealthTimeout time.Duration
+	PoolSize      int
+	MinIdleConns  int
+	MaxTTL        time.Duration
 }
 
 type LoggingConfig struct {
@@ -105,7 +123,12 @@ func Defaults() Config {
 			ConnectTimeout:  5 * time.Second,
 			HealthTimeout:   2 * time.Second,
 		},
-		Redis:   RedisConfig{Address: "127.0.0.1:6379"},
+		Redis: RedisConfig{
+			Address: "127.0.0.1:6379", DialTimeout: 5 * time.Second,
+			ReadTimeout: 2 * time.Second, WriteTimeout: 2 * time.Second,
+			PoolTimeout: 2 * time.Second, HealthTimeout: 2 * time.Second,
+			PoolSize: 100, MinIdleConns: 5, MaxTTL: 24 * time.Hour,
+		},
 		Logging: LoggingConfig{Level: LogLevelInfo},
 	}
 }
@@ -165,6 +188,14 @@ func LoadSources(sources ...Source) (Config, error) {
 	applyString(values, keyRedisAddress, func(value string) { cfg.Redis.Address = value })
 	applyString(values, keyRedisPassword, func(value string) { cfg.Redis.Password = NewSecret(value) })
 	applyInt(values, keyRedisDB, &cfg.Redis.DB, &issues)
+	applyDuration(values, keyRedisDialTimeout, &cfg.Redis.DialTimeout, &issues)
+	applyDuration(values, keyRedisReadTimeout, &cfg.Redis.ReadTimeout, &issues)
+	applyDuration(values, keyRedisWriteTimeout, &cfg.Redis.WriteTimeout, &issues)
+	applyDuration(values, keyRedisPoolTimeout, &cfg.Redis.PoolTimeout, &issues)
+	applyDuration(values, keyRedisHealthTimeout, &cfg.Redis.HealthTimeout, &issues)
+	applyInt(values, keyRedisPoolSize, &cfg.Redis.PoolSize, &issues)
+	applyInt(values, keyRedisMinIdleConns, &cfg.Redis.MinIdleConns, &issues)
+	applyDuration(values, keyRedisMaxTTL, &cfg.Redis.MaxTTL, &issues)
 	applyString(values, keyLogLevel, func(value string) { cfg.Logging.Level = LogLevel(value) })
 
 	issues = append(issues, cfg.validate()...)
@@ -227,6 +258,17 @@ func (c Config) validate() []FieldError {
 	validateRange(&issues, keyPostgresHealthTimeout, c.Postgres.HealthTimeout, 100*time.Millisecond, 30*time.Second)
 	validateAddress(&issues, keyRedisAddress, c.Redis.Address)
 	validateIntRange(&issues, keyRedisDB, c.Redis.DB, 0, 15)
+	validateRange(&issues, keyRedisDialTimeout, c.Redis.DialTimeout, 100*time.Millisecond, time.Minute)
+	validateRange(&issues, keyRedisReadTimeout, c.Redis.ReadTimeout, 100*time.Millisecond, 30*time.Second)
+	validateRange(&issues, keyRedisWriteTimeout, c.Redis.WriteTimeout, 100*time.Millisecond, 30*time.Second)
+	validateRange(&issues, keyRedisPoolTimeout, c.Redis.PoolTimeout, 100*time.Millisecond, time.Minute)
+	validateRange(&issues, keyRedisHealthTimeout, c.Redis.HealthTimeout, 100*time.Millisecond, 30*time.Second)
+	validateIntRange(&issues, keyRedisPoolSize, c.Redis.PoolSize, 1, 1000)
+	validateIntRange(&issues, keyRedisMinIdleConns, c.Redis.MinIdleConns, 0, 1000)
+	if c.Redis.MinIdleConns > c.Redis.PoolSize {
+		issues = append(issues, FieldError{Key: keyRedisMinIdleConns, Rule: "must not exceed pool size"})
+	}
+	validateRange(&issues, keyRedisMaxTTL, c.Redis.MaxTTL, time.Second, 24*time.Hour)
 	if !oneOf(string(c.Logging.Level), "debug", "info", "warn", "error") {
 		issues = append(issues, FieldError{Key: keyLogLevel, Rule: "must be debug, info, warn, or error"})
 	}
@@ -284,6 +326,14 @@ func (c Config) SafeFields() map[string]any {
 		"postgres.health_timeout":    c.Postgres.HealthTimeout,
 		"redis.address":              c.Redis.Address,
 		"redis.db":                   c.Redis.DB,
+		"redis.dial_timeout":         c.Redis.DialTimeout,
+		"redis.read_timeout":         c.Redis.ReadTimeout,
+		"redis.write_timeout":        c.Redis.WriteTimeout,
+		"redis.pool_timeout":         c.Redis.PoolTimeout,
+		"redis.health_timeout":       c.Redis.HealthTimeout,
+		"redis.pool_size":            c.Redis.PoolSize,
+		"redis.min_idle_conns":       c.Redis.MinIdleConns,
+		"redis.max_ttl":              c.Redis.MaxTTL,
 		"log.level":                  c.Logging.Level,
 	}
 }

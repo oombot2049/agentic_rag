@@ -49,6 +49,8 @@ func TestLoadSourcesValidation(t *testing.T) {
 		{name: "duration below minimum", values: MapSource{keyPostgresDSN: testDSN, keyServerReadHeaderTimeout: "50ms"}, keys: []string{keyServerReadHeaderTimeout}},
 		{name: "bad integer", values: MapSource{keyPostgresDSN: testDSN, keyRedisDB: "secret-number"}, keys: []string{keyRedisDB}},
 		{name: "integer above maximum", values: MapSource{keyPostgresDSN: testDSN, keyRedisDB: "16"}, keys: []string{keyRedisDB}},
+		{name: "redis idle exceeds pool", values: MapSource{keyPostgresDSN: testDSN, keyRedisPoolSize: "4", keyRedisMinIdleConns: "5"}, keys: []string{keyRedisMinIdleConns}},
+		{name: "redis ttl above retention", values: MapSource{keyPostgresDSN: testDSN, keyRedisMaxTTL: "25h"}, keys: []string{keyRedisMaxTTL}},
 		{name: "idle exceeds open", values: MapSource{keyPostgresDSN: testDSN, keyPostgresMaxOpenConns: "5", keyPostgresMaxIdleConns: "6"}, keys: []string{keyPostgresMaxIdleConns}},
 		{name: "bad addresses", values: MapSource{keyPostgresDSN: testDSN, keyServerAddress: "8080", keyRedisAddress: "redis"}, keys: []string{keyRedisAddress, keyServerAddress}},
 		{name: "bad log level", values: MapSource{keyPostgresDSN: testDSN, keyLogLevel: "verbose"}, keys: []string{keyLogLevel}},
@@ -84,6 +86,14 @@ func TestLoadSourcesParsesBoundaries(t *testing.T) {
 		keyPostgresMaxIdleConns:    "0",
 		keyPostgresConnLifetime:    "24h",
 		keyRedisDB:                 "15",
+		keyRedisDialTimeout:        "100ms",
+		keyRedisReadTimeout:        "30s",
+		keyRedisWriteTimeout:       "100ms",
+		keyRedisPoolTimeout:        "1m",
+		keyRedisHealthTimeout:      "30s",
+		keyRedisPoolSize:           "1000",
+		keyRedisMinIdleConns:       "1000",
+		keyRedisMaxTTL:             "24h",
 		keyLogLevel:                "debug",
 	})
 	if err != nil {
@@ -94,6 +104,9 @@ func TestLoadSourcesParsesBoundaries(t *testing.T) {
 	}
 	if cfg.Postgres.MaxOpenConns != 500 || cfg.Postgres.MaxIdleConns != 0 || cfg.Redis.DB != 15 {
 		t.Fatalf("numeric boundaries not retained: %+v", cfg.SafeFields())
+	}
+	if cfg.Redis.PoolSize != 1000 || cfg.Redis.MinIdleConns != 1000 || cfg.Redis.MaxTTL != 24*time.Hour {
+		t.Fatalf("Redis boundaries not retained: %+v", cfg.Redis)
 	}
 }
 
