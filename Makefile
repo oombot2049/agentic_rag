@@ -10,7 +10,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
-.PHONY: all fmt fmt-check test integration e2e race vet staticcheck vuln build check clean
+.PHONY: all fmt fmt-check test integration e2e concurrency race vet staticcheck vuln build check clean
 
 all: check
 
@@ -28,6 +28,9 @@ integration:
 
 e2e:
 	$(GO) test -tags=e2e -count=1 -v ./tests/e2e
+
+concurrency:
+	$(GO) test -race -tags=concurrency -count=1 -v ./tests/concurrency
 
 race:
 	$(GO) test -race ./...

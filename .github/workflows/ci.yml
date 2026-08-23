@@ -74,6 +74,7 @@ jobs:
       - run: go test -count=1 -v ./internal/platform/postgres ./internal/platform/redis
       - run: go test -tags=integration -count=1 -v ./tests/integration
       - run: go test -tags=e2e -count=1 -v ./tests/e2e
+      - run: go test -race -tags=concurrency -count=1 -v ./tests/concurrency
       - run: go test -race -count=1 ./...
 
   vulnerability:
