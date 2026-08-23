@@ -66,4 +66,12 @@ func TestValkeyClientIntegration(t *testing.T) {
 	if count, err := client.Delete(ctx, key); err != nil || count != 1 {
 		t.Fatalf("Delete = %d, %v", count, err)
 	}
+	streamKey, _ := builder.Build("ten_1", NamespaceEvents, "run", "run_1")
+	if err := client.StreamAppend(ctx, streamKey, "1-0", []byte(`{"sequence":1}`), time.Second); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := client.StreamRead(ctx, streamKey, "0-0", 10, 10*time.Millisecond)
+	if err != nil || len(entries) != 1 || entries[0].ID != "1-0" || !bytes.Equal(entries[0].Data, []byte(`{"sequence":1}`)) {
+		t.Fatalf("StreamRead = %+v, %v", entries, err)
+	}
 }

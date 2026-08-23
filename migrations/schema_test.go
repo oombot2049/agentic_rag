@@ -36,9 +36,29 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000005_artifact_metadata.down.sql", "000005_artifact_metadata.up.sql",
 		"000006_session_metadata.down.sql", "000006_session_metadata.up.sql",
 		"000007_run_execution_options.down.sql", "000007_run_execution_options.up.sql",
+		"000008_run_events.down.sql", "000008_run_events.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestRunEventsMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000008_run_events.up.sql")
+	for _, fragment := range []string{
+		"CREATE TABLE run_event_streams", "PRIMARY KEY (tenant_id, run_id)",
+		"next_sequence bigint NOT NULL DEFAULT 1", "retained_from bigint NOT NULL DEFAULT 1",
+		"CREATE TABLE run_events", "PRIMARY KEY (tenant_id, run_id, sequence)",
+		"event_data jsonb NOT NULL", "expires_at > occurred_at", "run_events_expiry_idx",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("Run events migration missing %q", fragment)
+		}
+	}
+	down := readMigration(t, "000008_run_events.down.sql")
+	if !strings.Contains(down, "DROP TABLE run_events;") || !strings.Contains(down, "DROP TABLE run_event_streams;") {
+		t.Fatal("Run events down migration must drop both owned tables in dependency order")
 	}
 }
 
