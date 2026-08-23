@@ -10,6 +10,8 @@ import (
 	"github.com/agenticrag/agenticrag/internal/domain"
 )
 
+var queryTime = time.Date(2026, 8, 23, 13, 0, 0, 0, time.UTC)
+
 type queryMemoryStore struct {
 	turn     *domain.Turn
 	run      *domain.Run
@@ -146,7 +148,7 @@ func TestQueryServiceValidationNotFoundAndHiddenMessage(t *testing.T) {
 	if _, err := service.ListMessages(context.Background(), "ten_0001", "ses_0001", "", 101); !apperror.IsCode(err, apperror.CodeInvalidArgument) {
 		t.Fatalf("bad page size=%v", err)
 	}
-	candidate, _ := domain.NewAssistantCandidate("msg_0002", "ten_0001", "ses_0001", "trn_0001", "run_0001", "hidden", time.Now())
+	candidate, _ := domain.NewAssistantCandidate("msg_0002", "ten_0001", "ses_0001", "trn_0001", "run_0001", "hidden", queryTime)
 	store.err, store.messages = nil, []*domain.Message{candidate}
 	if _, err := service.ListMessages(context.Background(), "ten_0001", "ses_0001", "", 50); !apperror.IsCode(err, apperror.CodeInternal) {
 		t.Fatalf("hidden Message=%v", err)
@@ -158,7 +160,7 @@ func TestQueryServiceValidationNotFoundAndHiddenMessage(t *testing.T) {
 
 func TestRunProjectionHidesUnselectedCandidateMessage(t *testing.T) {
 	t.Parallel()
-	at := time.Now().UTC()
+	at := queryTime
 	run, err := domain.RestoreRun(domain.RunSnapshot{ID: "run_0001", TenantID: "ten_0001", SessionID: "ses_0001", TurnID: "trn_0001",
 		RunNo: 1, Status: domain.RunStatusSuperseded, OutputMessageID: "msg_0001", CreatedAt: at, UpdatedAt: at})
 	if err != nil {

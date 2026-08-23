@@ -11,7 +11,7 @@ var testTime = time.Date(2026, 8, 23, 10, 0, 0, 0, time.FixedZone("CST", 8*60*60
 func TestRunTransitionMatrix(t *testing.T) {
 	t.Parallel()
 	statuses := []RunStatus{
-		RunStatusQueued, RunStatusRunning, RunStatusCancelRequested, RunStatusSucceeded,
+		RunStatusQueued, RunStatusRunning, RunStatusWaitingApproval, RunStatusCancelRequested, RunStatusSucceeded,
 		RunStatusSelected, RunStatusSuperseded, RunStatusFailed, RunStatusCancelled, RunStatusTimedOut,
 	}
 	for _, from := range statuses {
@@ -112,8 +112,12 @@ func TestTurnTerminalStatesOnlyReopenWithNewRun(t *testing.T) {
 
 func applyRunTransition(run *Run, target RunStatus, at time.Time) error {
 	switch target {
+	case RunStatusQueued:
+		return run.ResumeAfterApproval(at)
 	case RunStatusRunning:
 		return run.Start(at)
+	case RunStatusWaitingApproval:
+		return run.WaitForApproval(at)
 	case RunStatusCancelRequested:
 		return run.RequestCancel(at)
 	case RunStatusSucceeded:

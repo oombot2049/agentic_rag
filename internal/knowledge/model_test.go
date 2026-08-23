@@ -3,7 +3,7 @@ package knowledge
 import (
 	"crypto/sha256"
 	"errors"
-	"math/rand/v2"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -216,14 +216,15 @@ func TestChunkRejectsInvalidAndCrossTenantLineageProperty(t *testing.T) {
 			t.Errorf("case %d=%v", index, err)
 		}
 	}
+	random := rand.New(rand.NewSource(42))
 	for range 1_000 {
 		foreign := *document
-		if rand.IntN(2) == 0 {
+		if random.Intn(2) == 0 {
 			foreign.tenantID = "ten_9999"
 		} else {
 			foreign.knowledgeBaseID = "kbs_9999"
 		}
-		if _, err := NewChunk("chk_random", kb, &foreign, version, uint64(rand.IntN(100)+1), 1, "x", acl, knowledgeTime); !errors.Is(err, ErrInvalid) {
+		if _, err := NewChunk("chk_random", kb, &foreign, version, uint64(random.Intn(100)+1), 1, "x", acl, knowledgeTime); !errors.Is(err, ErrInvalid) {
 			t.Fatal("random mismatched lineage accepted")
 		}
 	}
