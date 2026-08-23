@@ -1,0 +1,67 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [{"title": "Dashboard data contract", "type": "link", "url": "https://github.com/agenticrag/agenticrag/blob/main/docs/requirements/0061-business-and-operations-dashboards.md", "targetBlank": true}],
+  "panels": [
+    {
+      "id": 1, "title": "Logical Run funnel", "description": "Each Run is counted at most once per stage; repeated Agent-loop calls are not funnel entries.",
+      "type": "bargauge", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"},
+      "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT f.stage, count(DISTINCT f.run_id)::double precision AS runs\nFROM analytics_run_funnel_hourly f\nJOIN dashboard_tenant_scope s ON s.tenant_key=f.tenant_key\nWHERE $__timeFilter(f.bucket_start)\n  AND (${tenant:sqlstring}='__all__' OR f.tenant_key=${tenant:sqlstring})\n  AND f.stage IN ('REQUESTED','QUEUED','RETRIEVED','GENERATION_STARTED','TERMINAL','COMMITTED')\nGROUP BY f.stage\nORDER BY CASE f.stage WHEN 'REQUESTED' THEN 1 WHEN 'QUEUED' THEN 2 WHEN 'RETRIEVED' THEN 3 WHEN 'GENERATION_STARTED' THEN 4 WHEN 'TERMINAL' THEN 5 WHEN 'COMMITTED' THEN 6 END"}],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []}, "gridPos": {"h": 10, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2, "title": "Stage-to-stage conversion", "description": "Conversion is derived from distinct logical Runs, not physical attempts.",
+      "type": "table", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"},
+      "targets": [{"refId": "A", "format": "table", "rawSql": "WITH counts AS (\n  SELECT f.stage, count(DISTINCT f.run_id)::double precision AS runs,\n    CASE f.stage WHEN 'REQUESTED' THEN 1 WHEN 'QUEUED' THEN 2 WHEN 'RETRIEVED' THEN 3 WHEN 'GENERATION_STARTED' THEN 4 WHEN 'TERMINAL' THEN 5 WHEN 'COMMITTED' THEN 6 END AS ordinal\n  FROM analytics_run_funnel_hourly f\n  JOIN dashboard_tenant_scope s ON s.tenant_key=f.tenant_key\n  WHERE $__timeFilter(f.bucket_start)\n    AND (${tenant:sqlstring}='__all__' OR f.tenant_key=${tenant:sqlstring})\n  GROUP BY f.stage\n)\nSELECT stage, runs, runs / nullif(lag(runs) OVER (ORDER BY ordinal),0) AS conversion_from_previous\nFROM counts ORDER BY ordinal"}],
+      "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "conversion_from_previous"}, "properties": [{"id": "unit", "value": "percentunit"}]}]},
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3, "title": "Committed Runs", "type": "timeseries", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"},
+      "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT $__timeGroupAlias(bucket_start,$__interval), sum(committed_runs)::double precision AS committed_runs\nFROM analytics_run_business_hourly b\nJOIN dashboard_tenant_scope s ON s.tenant_key=b.tenant_key\nWHERE $__timeFilter(bucket_start)\n  AND (${tenant:sqlstring}='__all__' OR b.tenant_key=${tenant:sqlstring})\nGROUP BY 1 ORDER BY 1"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}, "gridPos": {"h": 8, "w": 8, "x": 0, "y": 10}
+    },
+    {
+      "id": 4, "title": "Terminal success rate", "type": "timeseries", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"},
+      "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT $__timeGroupAlias(bucket_start,$__interval), sum(terminal_successes)::double precision / nullif(sum(terminal_runs),0) AS success_rate\nFROM analytics_run_business_hourly b\nJOIN dashboard_tenant_scope s ON s.tenant_key=b.tenant_key\nWHERE $__timeFilter(bucket_start)\n  AND (${tenant:sqlstring}='__all__' OR b.tenant_key=${tenant:sqlstring})\nGROUP BY 1 ORDER BY 1"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []}, "gridPos": {"h": 8, "w": 8, "x": 8, "y": 10}
+    },
+    {
+      "id": 5, "title": "Ledger cost per committed Run", "description": "Durable analytics ledger; authoritative for business analysis.",
+      "type": "timeseries", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"},
+      "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT $__timeGroupAlias(bucket_start,$__interval), sum(cost_nanos)::double precision / 1e9 / nullif(sum(committed_runs),0) AS cost_per_run\nFROM analytics_run_business_hourly b\nJOIN dashboard_tenant_scope s ON s.tenant_key=b.tenant_key\nWHERE $__timeFilter(bucket_start)\n  AND (${tenant:sqlstring}='__all__' OR b.tenant_key=${tenant:sqlstring})\nGROUP BY 1 ORDER BY 1"}],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4}, "overrides": []}, "gridPos": {"h": 8, "w": 8, "x": 16, "y": 10}
+    },
+    {
+      "id": 6, "title": "Analytics projection lag", "type": "timeseries", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"},
+      "targets": [{"refId": "A", "format": "time_series", "rawSql": "SELECT $__timeGroupAlias(bucket_start,$__interval), max(projection_lag_seconds)::double precision AS lag_seconds\nFROM analytics_run_reconciliation_hourly r\nJOIN dashboard_tenant_scope s ON s.tenant_key=r.tenant_key\nWHERE $__timeFilter(bucket_start)\n  AND (${tenant:sqlstring}='__all__' OR r.tenant_key=${tenant:sqlstring})\nGROUP BY 1 ORDER BY 1"}],
+      "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 300}, {"color": "red", "value": 900}]}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18}
+    },
+    {
+      "id": 7, "title": "Source reconciliation gaps", "description": "Any non-zero value invalidates funnel interpretation until projection replay completes.",
+      "type": "timeseries", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"},
+      "targets": [
+        {"refId": "A", "format": "time_series", "rawSql": "SELECT $__timeGroupAlias(bucket_start,$__interval), sum(source_terminal_runs-projected_terminal_runs)::double precision AS terminal_gap\nFROM analytics_run_reconciliation_hourly r\nJOIN dashboard_tenant_scope s ON s.tenant_key=r.tenant_key\nWHERE $__timeFilter(bucket_start) AND (${tenant:sqlstring}='__all__' OR r.tenant_key=${tenant:sqlstring})\nGROUP BY 1 ORDER BY 1"},
+        {"refId": "B", "format": "time_series", "rawSql": "SELECT $__timeGroupAlias(bucket_start,$__interval), sum(source_committed_runs-projected_committed_runs)::double precision AS committed_gap\nFROM analytics_run_reconciliation_hourly r\nJOIN dashboard_tenant_scope s ON s.tenant_key=r.tenant_key\nWHERE $__timeFilter(bucket_start) AND (${tenant:sqlstring}='__all__' OR r.tenant_key=${tenant:sqlstring})\nGROUP BY 1 ORDER BY 1"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18}
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 41,
+  "tags": ["agenticrag", "business", "governed"],
+  "templating": {"list": [
+    {"name": "DS_ANALYTICS", "label": "Governed analytics", "type": "datasource", "query": "grafana-postgresql-datasource", "refresh": 1},
+    {"name": "tenant", "label": "Authorized tenant", "type": "query", "datasource": {"type": "grafana-postgresql-datasource", "uid": "${DS_ANALYTICS}"}, "query": "SELECT display_name AS __text, tenant_key AS __value FROM dashboard_tenant_scope ORDER BY display_name", "includeAll": true, "allValue": "__all__", "multi": false, "refresh": 2}
+  ]},
+  "time": {"from": "now-7d", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "AgenticRAG Business Funnel",
+  "uid": "agenticrag-business",
+  "version": 1
+}
