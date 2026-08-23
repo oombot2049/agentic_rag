@@ -10,7 +10,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
-.PHONY: all fmt fmt-check test integration e2e concurrency eval race vet staticcheck vuln build check clean
+.PHONY: all fmt fmt-check test integration e2e concurrency eval load-contract race vet staticcheck vuln build check clean
 
 all: check
 
@@ -35,6 +35,10 @@ concurrency:
 eval:
 	$(GO) run ./evals/cmd/rageval -golden ./evals/testdata/golden/v1/dataset.json -predictions ./evals/testdata/predictions/reference-v1.json -baseline ./evals/testdata/baselines/v1.json
 	$(GO) test -count=1 ./evals/...
+
+load-contract:
+	$(GO) test -count=1 ./tests/load/...
+	$(GO) run ./tests/load/cmd/loadreport -profile ./tests/load/profiles/smoke-v1.json -measurement ./tests/load/testdata/contract-pass.json
 
 race:
 	$(GO) test -race ./...

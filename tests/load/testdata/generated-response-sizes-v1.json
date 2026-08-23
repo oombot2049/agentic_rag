@@ -1,0 +1,1 @@
+{"schema_version":1,"distribution_id":"assistant-output-v1","buckets":[{"bytes":1024,"weight":25},{"bytes":4096,"weight":50},{"bytes":16384,"weight":20},{"bytes":65536,"weight":5}],"source":"P8-03-e2e-corpus-sampled-and-rounded"}
