@@ -40,9 +40,31 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000009_run_cancellation.down.sql", "000009_run_cancellation.up.sql",
 		"000010_run_queue.down.sql", "000010_run_queue.up.sql",
 		"000011_retrieval_audit.down.sql", "000011_retrieval_audit.up.sql",
+		"000012_tool_call_ledger.down.sql", "000012_tool_call_ledger.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestToolCallLedgerMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000012_tool_call_ledger.up.sql")
+	for _, fragment := range []string{
+		"CREATE TABLE tool_calls", "CREATE TABLE tool_call_attempts",
+		"PRIMARY KEY (tenant_id, id)", "UNIQUE (tenant_id, run_id, step_id)",
+		"UNIQUE (tenant_id, invocation_key)", "octet_length(arguments_sha256)=32",
+		"'PREPARED','SUCCEEDED','FAILED','UNKNOWN'", "jsonb_typeof(result)='object'",
+		"PRIMARY KEY (tenant_id, attempt_id)", "UNIQUE (tenant_id, call_id, attempt_no)",
+		"tool_calls_reconciliation_idx", "FOREIGN KEY (tenant_id, attempt_id)",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("tool call ledger migration missing %q", fragment)
+		}
+	}
+	down := readMigration(t, "000012_tool_call_ledger.down.sql")
+	if strings.Index(down, "DROP TABLE tool_call_attempts") > strings.Index(down, "DROP TABLE tool_calls") {
+		t.Fatal("tool call ledger down migration has unsafe dependency order")
 	}
 }
 
