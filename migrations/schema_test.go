@@ -43,9 +43,31 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000012_tool_call_ledger.down.sql", "000012_tool_call_ledger.up.sql",
 		"000013_tool_approvals.down.sql", "000013_tool_approvals.up.sql",
 		"000014_tool_audit.down.sql", "000014_tool_audit.up.sql",
+		"000015_compliance_deletion.down.sql", "000015_compliance_deletion.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestComplianceDeletionMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000015_compliance_deletion.up.sql")
+	for _, fragment := range []string{
+		"CREATE TABLE compliance_external_targets", "CREATE TABLE legal_holds",
+		"CREATE TABLE session_deletion_jobs", "CREATE TABLE compliance_deletion_evidence",
+		"UNIQUE (tenant_id,session_id)", "jsonb_array_length(manifest)<=10000",
+		"legal_holds_one_active_session_idx", "session_deletion_jobs_claim_idx",
+		"compliance_deletion_evidence_query_idx", "octet_length(actor_sha256)=32",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("compliance migration missing %q", fragment)
+		}
+	}
+	for _, forbidden := range []string{"prompt", "message_content", "tool_arguments", "provider_error"} {
+		if strings.Contains(strings.ToLower(up), forbidden) {
+			t.Errorf("compliance migration stores forbidden detail %q", forbidden)
+		}
 	}
 }
 
