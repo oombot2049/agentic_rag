@@ -7,6 +7,7 @@ type RunStatus string
 const (
 	RunStatusQueued          RunStatus = "QUEUED"
 	RunStatusRunning         RunStatus = "RUNNING"
+	RunStatusWaitingApproval RunStatus = "WAITING_APPROVAL"
 	RunStatusCancelRequested RunStatus = "CANCEL_REQUESTED"
 	RunStatusSucceeded       RunStatus = "SUCCEEDED"
 	RunStatusSelected        RunStatus = "SELECTED"
@@ -20,7 +21,7 @@ func (s RunStatus) String() string { return string(s) }
 
 func (s RunStatus) valid() bool {
 	switch s {
-	case RunStatusQueued, RunStatusRunning, RunStatusCancelRequested, RunStatusSucceeded,
+	case RunStatusQueued, RunStatusRunning, RunStatusWaitingApproval, RunStatusCancelRequested, RunStatusSucceeded,
 		RunStatusSelected, RunStatusSuperseded, RunStatusFailed, RunStatusCancelled, RunStatusTimedOut:
 		return true
 	default:
@@ -117,13 +118,15 @@ func RestoreRun(snapshot RunSnapshot) (*Run, error) {
 	}, nil
 }
 
-func (r *Run) Start(at time.Time) error         { return r.transition(RunStatusRunning, at) }
-func (r *Run) RequestCancel(at time.Time) error { return r.transition(RunStatusCancelRequested, at) }
-func (r *Run) Cancel(at time.Time) error        { return r.transition(RunStatusCancelled, at) }
-func (r *Run) Fail(at time.Time) error          { return r.transition(RunStatusFailed, at) }
-func (r *Run) Timeout(at time.Time) error       { return r.transition(RunStatusTimedOut, at) }
-func (r *Run) Select(at time.Time) error        { return r.transition(RunStatusSelected, at) }
-func (r *Run) Supersede(at time.Time) error     { return r.transition(RunStatusSuperseded, at) }
+func (r *Run) Start(at time.Time) error               { return r.transition(RunStatusRunning, at) }
+func (r *Run) WaitForApproval(at time.Time) error     { return r.transition(RunStatusWaitingApproval, at) }
+func (r *Run) ResumeAfterApproval(at time.Time) error { return r.transition(RunStatusQueued, at) }
+func (r *Run) RequestCancel(at time.Time) error       { return r.transition(RunStatusCancelRequested, at) }
+func (r *Run) Cancel(at time.Time) error              { return r.transition(RunStatusCancelled, at) }
+func (r *Run) Fail(at time.Time) error                { return r.transition(RunStatusFailed, at) }
+func (r *Run) Timeout(at time.Time) error             { return r.transition(RunStatusTimedOut, at) }
+func (r *Run) Select(at time.Time) error              { return r.transition(RunStatusSelected, at) }
+func (r *Run) Supersede(at time.Time) error           { return r.transition(RunStatusSuperseded, at) }
 
 func (r *Run) Succeed(outputMessageID MessageID, at time.Time) error {
 	if r.status != RunStatusRunning {
@@ -160,7 +163,9 @@ func validRunTransition(from, to RunStatus) bool {
 	case RunStatusQueued:
 		return to == RunStatusRunning || to == RunStatusCancelled || to == RunStatusTimedOut
 	case RunStatusRunning:
-		return to == RunStatusCancelRequested || to == RunStatusFailed || to == RunStatusTimedOut
+		return to == RunStatusWaitingApproval || to == RunStatusCancelRequested || to == RunStatusFailed || to == RunStatusTimedOut
+	case RunStatusWaitingApproval:
+		return to == RunStatusQueued || to == RunStatusFailed || to == RunStatusCancelled || to == RunStatusTimedOut
 	case RunStatusCancelRequested:
 		return to == RunStatusCancelled
 	case RunStatusSucceeded:

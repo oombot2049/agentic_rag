@@ -41,9 +41,24 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000010_run_queue.down.sql", "000010_run_queue.up.sql",
 		"000011_retrieval_audit.down.sql", "000011_retrieval_audit.up.sql",
 		"000012_tool_call_ledger.down.sql", "000012_tool_call_ledger.up.sql",
+		"000013_tool_approvals.down.sql", "000013_tool_approvals.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestToolApprovalsMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000013_tool_approvals.up.sql")
+	for _, fragment := range []string{"'WAITING_APPROVAL'", "CREATE TABLE tool_approvals",
+		"PRIMARY KEY (tenant_id,id)", "UNIQUE (tenant_id,run_id,step_id)",
+		"octet_length(arguments_sha256)=32", "octet_length(nonce_sha256)=32",
+		"'WAITING','APPROVED','REJECTED','EXPIRED'", "tool_approvals_expiry_idx",
+		"FOREIGN KEY (tenant_id,tool_call_id)"} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("tool approval migration missing %q", fragment)
+		}
 	}
 }
 
