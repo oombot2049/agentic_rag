@@ -13,6 +13,7 @@ import (
 	"github.com/agenticrag/agenticrag/internal/apperror"
 	"github.com/agenticrag/agenticrag/internal/domain"
 	"github.com/agenticrag/agenticrag/internal/idempotency"
+	"github.com/agenticrag/agenticrag/internal/queue"
 	sessioncontrol "github.com/agenticrag/agenticrag/internal/session"
 )
 
@@ -69,13 +70,15 @@ func TestCreateNormalizesDefaultsAndReplays(t *testing.T) {
 	}
 	service.now = func() time.Time { return time.Date(2026, 8, 23, 9, 0, 0, 0, time.FixedZone("CST", 8*60*60)) }
 	base := CreateRequest{TenantID: "ten_0001", AuthenticatedSubjectID: "sub_0001", SessionID: "ses_0001",
-		IdempotencyKey: "idem-key-00000001", ExpectedContextVersion: 0, MessageContent: "hello"}
+		IdempotencyKey: "idem-key-00000001", ExpectedContextVersion: 0, MessageContent: "hello",
+		Trace: queue.TraceContext{TraceParent: "00-11111111111111111111111111111111-2222222222222222-01"}}
 	first, err := service.Create(context.Background(), base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	explicit := defaultMaxSteps
 	base.MaxSteps = &explicit
+	base.Trace.TraceParent = "00-33333333333333333333333333333333-4444444444444444-01"
 	replay, err := service.Create(context.Background(), base)
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +90,8 @@ func TestCreateNormalizesDefaultsAndReplays(t *testing.T) {
 		t.Fatalf("physical creates = %d", store.creates)
 	}
 	for _, persisted := range store.records {
-		if persisted.MaxSteps != 12 || persisted.Now.Location() != time.UTC || persisted.Retention < idempotency.MinimumRetention {
+		if persisted.MaxSteps != 12 || persisted.Now.Location() != time.UTC || persisted.Retention < idempotency.MinimumRetention ||
+			persisted.Trace.TraceParent != "00-11111111111111111111111111111111-2222222222222222-01" {
 			t.Fatalf("normalized persistence = %+v", persisted)
 		}
 	}
@@ -153,6 +157,7 @@ func TestCreateValidationAndStoreErrorMapping(t *testing.T) {
 		{"blank message", func(r *CreateRequest) { r.MessageContent = "  " }, apperror.CodeInvalidArgument},
 		{"large message", func(r *CreateRequest) { r.MessageContent = string(make([]byte, maximumContent+1)) }, apperror.CodeInvalidArgument},
 		{"max steps", func(r *CreateRequest) { r.MaxSteps = &tooMany }, apperror.CodeInvalidArgument},
+		{"trace", func(r *CreateRequest) { r.Trace.TraceParent = "invalid" }, apperror.CodeInvalidArgument},
 	}
 	for _, test := range invalidCases {
 		t.Run(test.name, func(t *testing.T) {

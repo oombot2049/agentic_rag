@@ -55,6 +55,7 @@ func TestLoadSourcesValidation(t *testing.T) {
 		{name: "idle exceeds open", values: MapSource{keyPostgresDSN: testDSN, keyPostgresMaxOpenConns: "5", keyPostgresMaxIdleConns: "6"}, keys: []string{keyPostgresMaxIdleConns}},
 		{name: "bad addresses", values: MapSource{keyPostgresDSN: testDSN, keyServerAddress: "8080", keyRedisAddress: "redis"}, keys: []string{keyRedisAddress, keyServerAddress}},
 		{name: "bad log level", values: MapSource{keyPostgresDSN: testDSN, keyLogLevel: "verbose"}, keys: []string{keyLogLevel}},
+		{name: "queue global below tenant", values: MapSource{keyPostgresDSN: testDSN, keyQueueMaxPendingTenant: "20", keyQueueMaxPendingGlobal: "10"}, keys: []string{keyQueueMaxPendingGlobal}},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +98,8 @@ func TestLoadSourcesParsesBoundaries(t *testing.T) {
 		keyRedisPoolSize:           "1000",
 		keyRedisMinIdleConns:       "1000",
 		keyRedisMaxTTL:             "24h",
+		keyQueueMaxPendingTenant:   "100000",
+		keyQueueMaxPendingGlobal:   "1000000",
 		keyLogLevel:                "debug",
 	})
 	if err != nil {
@@ -111,6 +114,9 @@ func TestLoadSourcesParsesBoundaries(t *testing.T) {
 	}
 	if cfg.Redis.PoolSize != 1000 || cfg.Redis.MinIdleConns != 1000 || cfg.Redis.MaxTTL != 24*time.Hour {
 		t.Fatalf("Redis boundaries not retained: %+v", cfg.Redis)
+	}
+	if cfg.Queue.MaxPendingPerTenant != 100000 || cfg.Queue.MaxPendingGlobal != 1000000 {
+		t.Fatalf("queue boundaries not retained: %+v", cfg.Queue)
 	}
 }
 

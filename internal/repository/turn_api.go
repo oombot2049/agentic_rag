@@ -142,8 +142,11 @@ func (s *TurnAPIStore) createAcquired(
 		TurnSequence       uint64 `json:"turn_sequence"`
 		BaseContextVersion uint64 `json:"base_context_version"`
 		MaxSteps           int    `json:"max_steps"`
+		TraceParent        string `json:"traceparent,omitempty"`
+		TraceState         string `json:"tracestate,omitempty"`
 	}{1, command.TenantID.String(), command.SessionID.String(), command.IDs.TurnID.String(),
-		command.IDs.RunID.String(), command.IDs.MessageID.String(), sequence, command.ExpectedContextVersion, command.MaxSteps})
+		command.IDs.RunID.String(), command.IDs.MessageID.String(), sequence, command.ExpectedContextVersion, command.MaxSteps,
+		command.Trace.TraceParent, command.Trace.TraceState})
 	if err != nil {
 		return err
 	}

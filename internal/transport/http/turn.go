@@ -9,6 +9,7 @@ import (
 
 	"github.com/agenticrag/agenticrag/internal/apperror"
 	"github.com/agenticrag/agenticrag/internal/auth"
+	"github.com/agenticrag/agenticrag/internal/queue"
 	"github.com/agenticrag/agenticrag/internal/turn"
 )
 
@@ -92,6 +93,21 @@ func (h *TurnHandler) create(response http.ResponseWriter, request *http.Request
 		auth.WriteFailure(response, request, apperror.New(apperror.CodeInvalidArgument, false, errors.New("expected_context_version and message.content are required")))
 		return
 	}
+	traceParent, err := optionalSingleHeader(request, "Traceparent")
+	if err != nil {
+		auth.WriteFailure(response, request, apperror.New(apperror.CodeInvalidArgument, false, err))
+		return
+	}
+	traceState, err := optionalSingleHeader(request, "Tracestate")
+	if err != nil {
+		auth.WriteFailure(response, request, apperror.New(apperror.CodeInvalidArgument, false, err))
+		return
+	}
+	trace, err := queue.NewTraceContext(traceParent, traceState)
+	if err != nil {
+		auth.WriteFailure(response, request, apperror.New(apperror.CodeInvalidArgument, false, err))
+		return
+	}
 	var maxSteps *int
 	if body.Execution.present {
 		maxSteps = body.Execution.maxSteps
@@ -99,7 +115,7 @@ func (h *TurnHandler) create(response http.ResponseWriter, request *http.Request
 	created, err := h.service.Create(request.Context(), turn.CreateRequest{
 		TenantID: principal.TenantID(), AuthenticatedSubjectID: principal.SubjectID(),
 		SessionID: request.PathValue("session_id"), IdempotencyKey: key,
-		ExpectedContextVersion: *body.ExpectedContextVersion, MessageContent: *body.Message.Content, MaxSteps: maxSteps,
+		ExpectedContextVersion: *body.ExpectedContextVersion, MessageContent: *body.Message.Content, MaxSteps: maxSteps, Trace: trace,
 	})
 	if err != nil {
 		auth.WriteFailure(response, request, err)

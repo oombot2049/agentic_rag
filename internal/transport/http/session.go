@@ -109,6 +109,17 @@ func singleHeader(request *http.Request, name string) (string, error) {
 	return values[0], nil
 }
 
+func optionalSingleHeader(request *http.Request, name string) (string, error) {
+	values := request.Header.Values(name)
+	if len(values) == 0 {
+		return "", nil
+	}
+	if len(values) != 1 || values[0] == "" || strings.Contains(values[0], ",") {
+		return "", errors.New("optional header must occur at most once and be non-empty")
+	}
+	return values[0], nil
+}
+
 func requireJSON(value string) error {
 	mediaType, _, err := mime.ParseMediaType(value)
 	if err != nil || !strings.EqualFold(mediaType, "application/json") {

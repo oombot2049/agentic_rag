@@ -57,6 +57,8 @@ supported: a changed configuration requires a rolling restart.
 | Redis | `AGENTICRAG_REDIS_POOL_SIZE` | integer/100 | 1–1000 |
 | Redis | `AGENTICRAG_REDIS_MIN_IDLE_CONNS` | integer/5 | 0–pool size |
 | Redis | `AGENTICRAG_REDIS_MAX_TTL` | duration/24h | 1s–24h |
+| queue | `AGENTICRAG_QUEUE_MAX_PENDING_PER_TENANT` | integer/250 | 1–100,000 |
+| queue | `AGENTICRAG_QUEUE_MAX_PENDING_GLOBAL` | integer/6,000 | per-tenant–1,000,000 |
 | logging | `AGENTICRAG_LOG_LEVEL` | enum/`info` | debug, info, warn, error |
 
 These are process/bootstrap values, not tenant policy. Capacity and Agent limits

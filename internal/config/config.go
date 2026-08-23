@@ -35,6 +35,8 @@ const (
 	keyRedisPoolSize           = "AGENTICRAG_REDIS_POOL_SIZE"
 	keyRedisMinIdleConns       = "AGENTICRAG_REDIS_MIN_IDLE_CONNS"
 	keyRedisMaxTTL             = "AGENTICRAG_REDIS_MAX_TTL"
+	keyQueueMaxPendingTenant   = "AGENTICRAG_QUEUE_MAX_PENDING_PER_TENANT"
+	keyQueueMaxPendingGlobal   = "AGENTICRAG_QUEUE_MAX_PENDING_GLOBAL"
 	keyLogLevel                = "AGENTICRAG_LOG_LEVEL"
 )
 
@@ -45,6 +47,7 @@ var knownKeys = []string{
 	keyPostgresConnectTimeout, keyPostgresHealthTimeout, keyRedisPassword, keyRedisDB,
 	keyRedisDialTimeout, keyRedisReadTimeout, keyRedisWriteTimeout, keyRedisPoolTimeout,
 	keyRedisHealthTimeout, keyRedisPoolSize, keyRedisMinIdleConns, keyRedisMaxTTL, keyLogLevel,
+	keyQueueMaxPendingTenant, keyQueueMaxPendingGlobal,
 }
 
 // Environment identifies the deployment behavior class.
@@ -101,12 +104,18 @@ type LoggingConfig struct {
 	Level LogLevel
 }
 
+type QueueConfig struct {
+	MaxPendingPerTenant int
+	MaxPendingGlobal    int
+}
+
 // Config is the process configuration after parsing and validation.
 type Config struct {
 	Environment Environment
 	Server      ServerConfig
 	Postgres    PostgresConfig
 	Redis       RedisConfig
+	Queue       QueueConfig
 	Logging     LoggingConfig
 }
 
@@ -135,6 +144,7 @@ func Defaults() Config {
 			PoolTimeout: 2 * time.Second, HealthTimeout: 2 * time.Second,
 			PoolSize: 100, MinIdleConns: 5, MaxTTL: 24 * time.Hour,
 		},
+		Queue:   QueueConfig{MaxPendingPerTenant: 250, MaxPendingGlobal: 6000},
 		Logging: LoggingConfig{Level: LogLevelInfo},
 	}
 }
@@ -204,6 +214,8 @@ func LoadSources(sources ...Source) (Config, error) {
 	applyInt(values, keyRedisPoolSize, &cfg.Redis.PoolSize, &issues)
 	applyInt(values, keyRedisMinIdleConns, &cfg.Redis.MinIdleConns, &issues)
 	applyDuration(values, keyRedisMaxTTL, &cfg.Redis.MaxTTL, &issues)
+	applyInt(values, keyQueueMaxPendingTenant, &cfg.Queue.MaxPendingPerTenant, &issues)
+	applyInt(values, keyQueueMaxPendingGlobal, &cfg.Queue.MaxPendingGlobal, &issues)
 	applyString(values, keyLogLevel, func(value string) { cfg.Logging.Level = LogLevel(value) })
 
 	issues = append(issues, cfg.validate()...)
@@ -282,6 +294,11 @@ func (c Config) validate() []FieldError {
 		issues = append(issues, FieldError{Key: keyRedisMinIdleConns, Rule: "must not exceed pool size"})
 	}
 	validateRange(&issues, keyRedisMaxTTL, c.Redis.MaxTTL, time.Second, 24*time.Hour)
+	validateIntRange(&issues, keyQueueMaxPendingTenant, c.Queue.MaxPendingPerTenant, 1, 100_000)
+	validateIntRange(&issues, keyQueueMaxPendingGlobal, c.Queue.MaxPendingGlobal, 1, 1_000_000)
+	if c.Queue.MaxPendingGlobal < c.Queue.MaxPendingPerTenant {
+		issues = append(issues, FieldError{Key: keyQueueMaxPendingGlobal, Rule: "must not be smaller than per-tenant pending capacity"})
+	}
 	if !oneOf(string(c.Logging.Level), "debug", "info", "warn", "error") {
 		issues = append(issues, FieldError{Key: keyLogLevel, Rule: "must be debug, info, warn, or error"})
 	}
@@ -328,28 +345,30 @@ func oneOf(value string, allowed ...string) bool {
 // SafeFields returns an allowlist suitable for structured startup logs.
 func (c Config) SafeFields() map[string]any {
 	return map[string]any{
-		"environment":                c.Environment,
-		"server.address":             c.Server.Address,
-		"server.read_timeout":        c.Server.ReadTimeout,
-		"server.read_header_timeout": c.Server.ReadHeaderTimeout,
-		"server.idle_timeout":        c.Server.IdleTimeout,
-		"server.shutdown_timeout":    c.Server.ShutdownTimeout,
-		"postgres.max_open_conns":    c.Postgres.MaxOpenConns,
-		"postgres.max_idle_conns":    c.Postgres.MaxIdleConns,
-		"postgres.conn_max_lifetime": c.Postgres.ConnMaxLifetime,
-		"postgres.connect_timeout":   c.Postgres.ConnectTimeout,
-		"postgres.health_timeout":    c.Postgres.HealthTimeout,
-		"redis.address":              c.Redis.Address,
-		"redis.db":                   c.Redis.DB,
-		"redis.dial_timeout":         c.Redis.DialTimeout,
-		"redis.read_timeout":         c.Redis.ReadTimeout,
-		"redis.write_timeout":        c.Redis.WriteTimeout,
-		"redis.pool_timeout":         c.Redis.PoolTimeout,
-		"redis.health_timeout":       c.Redis.HealthTimeout,
-		"redis.pool_size":            c.Redis.PoolSize,
-		"redis.min_idle_conns":       c.Redis.MinIdleConns,
-		"redis.max_ttl":              c.Redis.MaxTTL,
-		"log.level":                  c.Logging.Level,
+		"environment":                  c.Environment,
+		"server.address":               c.Server.Address,
+		"server.read_timeout":          c.Server.ReadTimeout,
+		"server.read_header_timeout":   c.Server.ReadHeaderTimeout,
+		"server.idle_timeout":          c.Server.IdleTimeout,
+		"server.shutdown_timeout":      c.Server.ShutdownTimeout,
+		"postgres.max_open_conns":      c.Postgres.MaxOpenConns,
+		"postgres.max_idle_conns":      c.Postgres.MaxIdleConns,
+		"postgres.conn_max_lifetime":   c.Postgres.ConnMaxLifetime,
+		"postgres.connect_timeout":     c.Postgres.ConnectTimeout,
+		"postgres.health_timeout":      c.Postgres.HealthTimeout,
+		"redis.address":                c.Redis.Address,
+		"redis.db":                     c.Redis.DB,
+		"redis.dial_timeout":           c.Redis.DialTimeout,
+		"redis.read_timeout":           c.Redis.ReadTimeout,
+		"redis.write_timeout":          c.Redis.WriteTimeout,
+		"redis.pool_timeout":           c.Redis.PoolTimeout,
+		"redis.health_timeout":         c.Redis.HealthTimeout,
+		"redis.pool_size":              c.Redis.PoolSize,
+		"redis.min_idle_conns":         c.Redis.MinIdleConns,
+		"redis.max_ttl":                c.Redis.MaxTTL,
+		"queue.max_pending_per_tenant": c.Queue.MaxPendingPerTenant,
+		"queue.max_pending_global":     c.Queue.MaxPendingGlobal,
+		"log.level":                    c.Logging.Level,
 	}
 }
 

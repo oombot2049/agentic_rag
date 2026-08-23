@@ -16,6 +16,7 @@ import (
 	"github.com/agenticrag/agenticrag/internal/apperror"
 	"github.com/agenticrag/agenticrag/internal/domain"
 	"github.com/agenticrag/agenticrag/internal/idempotency"
+	"github.com/agenticrag/agenticrag/internal/queue"
 	sessioncontrol "github.com/agenticrag/agenticrag/internal/session"
 )
 
@@ -48,6 +49,7 @@ type CreateRequest struct {
 	ExpectedContextVersion uint64
 	MessageContent         string
 	MaxSteps               *int
+	Trace                  queue.TraceContext
 }
 
 type CreatePersistence struct {
@@ -57,6 +59,7 @@ type CreatePersistence struct {
 	ExpectedContextVersion uint64
 	MessageContent         string
 	MaxSteps               int
+	Trace                  queue.TraceContext
 	IDs                    IDs
 	Scope                  idempotency.Scope
 	Fingerprint            idempotency.Fingerprint
@@ -131,6 +134,10 @@ func (s *Service) Create(ctx context.Context, request CreateRequest) (CreateResp
 	if maxSteps < 1 || maxSteps > maximumMaxSteps {
 		return CreateResponse{}, invalid(errors.New("max_steps must be between 1 and 20"))
 	}
+	trace, err := queue.NewTraceContext(request.Trace.TraceParent, request.Trace.TraceState)
+	if err != nil {
+		return CreateResponse{}, invalid(err)
+	}
 	normalizedBody := struct {
 		ExpectedContextVersion uint64 `json:"expected_context_version"`
 		Message                struct {
@@ -159,7 +166,7 @@ func (s *Service) Create(ctx context.Context, request CreateRequest) (CreateResp
 	result, err := s.store.Create(ctx, CreatePersistence{
 		TenantID: request.TenantID, AuthenticatedSubjectID: request.AuthenticatedSubjectID,
 		SessionID: sessionID, ExpectedContextVersion: request.ExpectedContextVersion,
-		MessageContent: request.MessageContent, MaxSteps: maxSteps, IDs: ids,
+		MessageContent: request.MessageContent, MaxSteps: maxSteps, Trace: trace, IDs: ids,
 		Scope: idempotency.Scope{TenantID: request.TenantID, AuthenticatedSubjectID: request.AuthenticatedSubjectID,
 			Operation: createOperation, Key: request.IdempotencyKey},
 		Fingerprint: fingerprint, Now: now, Retention: s.retention,

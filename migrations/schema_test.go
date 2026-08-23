@@ -38,9 +38,22 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000007_run_execution_options.down.sql", "000007_run_execution_options.up.sql",
 		"000008_run_events.down.sql", "000008_run_events.up.sql",
 		"000009_run_cancellation.down.sql", "000009_run_cancellation.up.sql",
+		"000010_run_queue.down.sql", "000010_run_queue.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestRunQueueMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000010_run_queue.up.sql")
+	for _, fragment := range []string{"CREATE TABLE run_queue_messages", "PRIMARY KEY (tenant_id, run_id)",
+		"UNIQUE (tenant_id, delivery_id)", "status IN ('READY','LEASED','ACKED')", "lease_token bigint NOT NULL DEFAULT 0",
+		"run_queue_ready_idx", "run_queue_expired_lease_idx", "run_queue_partition_idx", "REFERENCES runs"} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("Run queue migration missing %q", fragment)
+		}
 	}
 }
 

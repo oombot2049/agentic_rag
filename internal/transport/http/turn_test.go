@@ -60,6 +60,8 @@ func TestTurnHTTPCreateReplayAndTrustedTenant(t *testing.T) {
 		request.Header.Set("Authorization", "Bearer valid-token")
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Idempotency-Key", "idem-key-00000001")
+		request.Header.Set("Traceparent", "00-11111111111111111111111111111111-2222222222222222-01")
+		request.Header.Set("Tracestate", "vendor=value")
 		request.Header.Set("X-Tenant-ID", "ten_evil")
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, request)
@@ -77,8 +79,36 @@ func TestTurnHTTPCreateReplayAndTrustedTenant(t *testing.T) {
 			t.Fatalf("body=%s err=%v", response.Body.String(), err)
 		}
 	}
-	if first.Body.String() != replay.Body.String() || store.command.TenantID != "ten_0001" || store.command.MaxSteps != 12 {
+	if first.Body.String() != replay.Body.String() || store.command.TenantID != "ten_0001" || store.command.MaxSteps != 12 ||
+		store.command.Trace.TraceParent == "" || store.command.Trace.TraceState != "vendor=value" {
 		t.Fatalf("replay or tenant/default mismatch command=%+v", store.command)
+	}
+}
+
+func TestTurnHTTPRejectsMalformedOrAmbiguousTraceContext(t *testing.T) {
+	store := &turnHandlerStore{}
+	service, _ := turn.NewService(store, turn.IDGeneratorFunc(func() (turn.IDs, error) {
+		return turn.IDs{TurnID: "trn_0001", MessageID: "msg_0001", RunID: "run_0001", EventID: "evt_0001"}, nil
+	}))
+	handler, _ := NewTurnHandler(service)
+	server := authenticatedSessionRoutes(t, handler.Routes(), "ten_0001", []string{"sessions:write"})
+	for _, headers := range []http.Header{
+		{"Traceparent": []string{"invalid"}},
+		{"Tracestate": []string{"vendor=value"}},
+		{"Traceparent": []string{"00-11111111111111111111111111111111-2222222222222222-01", "00-33333333333333333333333333333333-4444444444444444-01"}},
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/sessions/ses_0001/turns", strings.NewReader(`{"expected_context_version":0,"message":{"content":"x"}}`))
+		request.Header.Set("Authorization", "Bearer valid-token")
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", "idem-key-00000001")
+		for name, values := range headers {
+			request.Header[name] = values
+		}
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "INVALID_ARGUMENT") {
+			t.Fatalf("headers=%v status=%d body=%s", headers, response.Code, response.Body.String())
+		}
 	}
 }
 
