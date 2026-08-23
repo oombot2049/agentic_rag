@@ -37,9 +37,21 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000006_session_metadata.down.sql", "000006_session_metadata.up.sql",
 		"000007_run_execution_options.down.sql", "000007_run_execution_options.up.sql",
 		"000008_run_events.down.sql", "000008_run_events.up.sql",
+		"000009_run_cancellation.down.sql", "000009_run_cancellation.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestRunCancellationMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000009_run_cancellation.up.sql")
+	for _, fragment := range []string{"cancel_requested_at timestamptz", "cancelled_at timestamptz", "runs_cancellation_shape",
+		"status = 'CANCEL_REQUESTED'", "status = 'CANCELLED'", "cancelled_at >= cancel_requested_at"} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("Run cancellation migration missing %q", fragment)
+		}
 	}
 }
 
