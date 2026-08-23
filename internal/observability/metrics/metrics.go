@@ -48,6 +48,25 @@ const (
 	LLMRateLimited LLMOutcome = "rate_limited"
 )
 
+type SLI string
+
+const (
+	SLITurnCommand        SLI = "turn_command"
+	SLISessionRead        SLI = "session_read"
+	SLISSEResume          SLI = "sse_resume"
+	SLIRunTerminalization SLI = "run_terminalization"
+	SLIRetrieval          SLI = "retrieval"
+	SLIFinalCommit        SLI = "final_commit"
+)
+
+type SLIClassification string
+
+const (
+	SLIGood     SLIClassification = "good"
+	SLIBad      SLIClassification = "bad"
+	SLIExcluded SLIClassification = "excluded"
+)
+
 type Config struct {
 	AllowedModels map[string][]string
 }
@@ -67,6 +86,7 @@ type Metrics struct {
 	inputTokens   *prometheus.CounterVec
 	outputTokens  *prometheus.CounterVec
 	llmCost       *prometheus.CounterVec
+	sliEvents     *prometheus.CounterVec
 }
 
 var configuredLabel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
@@ -88,9 +108,11 @@ func New(config Config) (*Metrics, error) {
 		llmTTFT:      prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "agenticrag_llm_ttft_seconds", Help: "LLM time to first token when available.", Buckets: []float64{.025, .05, .1, .25, .5, 1, 2, 5, 10, 30}}, []string{"plan", "provider", "model"}),
 		inputTokens:  prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agenticrag_llm_input_tokens_total", Help: "LLM input Tokens."}, []string{"plan", "provider", "model"}),
 		outputTokens: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agenticrag_llm_output_tokens_total", Help: "LLM output Tokens."}, []string{"plan", "provider", "model"}),
-		llmCost:      prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agenticrag_llm_cost_nanos_total", Help: "Estimated LLM cost in currency nanos."}, []string{"plan", "provider", "model"})}
+		llmCost:      prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agenticrag_llm_cost_nanos_total", Help: "Estimated LLM cost in currency nanos."}, []string{"plan", "provider", "model"}),
+		sliEvents:    prometheus.NewCounterVec(prometheus.CounterOpts{Name: "agenticrag_sli_events_total", Help: "Logical SLI events classified at the owning business boundary."}, []string{"sli", "classification"})}
 	value.registry.MustRegister(value.httpRequests, value.httpDuration, value.activeRuns, value.queueWait, value.runs,
-		value.runDuration, value.runSteps, value.llmRequests, value.llmTTFT, value.inputTokens, value.outputTokens, value.llmCost)
+		value.runDuration, value.runSteps, value.llmRequests, value.llmTTFT, value.inputTokens, value.outputTokens, value.llmCost,
+		value.sliEvents)
 	return value, nil
 }
 
@@ -193,6 +215,16 @@ func (m *Metrics) ObserveLLM(value LLMObservation) error {
 	return nil
 }
 
+// ObserveSLI records one logical event after the owning business boundary has
+// applied eligibility rules. Physical retries must not call this method.
+func (m *Metrics) ObserveSLI(sli SLI, classification SLIClassification) error {
+	if m == nil || !validSLI(sli) || !validSLIClassification(classification) {
+		return ErrInvalid
+	}
+	m.sliEvents.WithLabelValues(string(sli), string(classification)).Inc()
+	return nil
+}
+
 func (m *Metrics) normalizeModel(provider, model string) (string, string) {
 	if _, allowed := m.allowedModels[provider+"\x00"+model]; !allowed {
 		return "other", "other"
@@ -248,4 +280,13 @@ func validRunOutcome(value RunOutcome) bool {
 }
 func validLLMOutcome(value LLMOutcome) bool {
 	return value == LLMSucceeded || value == LLMFailed || value == LLMTimedOut || value == LLMRateLimited
+}
+
+func validSLI(value SLI) bool {
+	return value == SLITurnCommand || value == SLISessionRead || value == SLISSEResume || value == SLIRunTerminalization ||
+		value == SLIRetrieval || value == SLIFinalCommit
+}
+
+func validSLIClassification(value SLIClassification) bool {
+	return value == SLIGood || value == SLIBad || value == SLIExcluded
 }

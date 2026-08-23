@@ -38,6 +38,7 @@ flowchart LR
 | `agenticrag_llm_ttft_seconds` | Histogram | `plan,provider,model` |
 | `agenticrag_llm_input_tokens_total` / `output_tokens_total` | Counter | `plan,provider,model` |
 | `agenticrag_llm_cost_nanos_total` | Counter | `plan,provider,model` |
+| `agenticrag_sli_events_total` | Counter | closed `sli,classification` vocabularies |
 
 QPS is derived with `rate(agenticrag_http_requests_total[window])`; it is not a
 second mutable gauge. Histograms use explicit service-oriented buckets.
@@ -68,6 +69,13 @@ HTTP middleware preserves optional ResponseWriter interfaces through
 `httpsnoop`. Invalid observations return an error instead of panicking or
 creating a surprise series. TTFT equal to zero means the non-streaming provider
 did not expose it and is omitted rather than substituting total latency.
+
+P7-06 extends the contract with logical SLI events. The owning business boundary
+records exactly one `good`, `bad`, or `excluded` event after idempotency and
+eligibility classification; dependency attempts and retries do not increment
+this logical counter. This lets error-budget alerts distinguish a bad global
+overload `429` from an excluded tenant-quota `429` without a high-cardinality
+reason label.
 
 ## 5. Test strategy
 

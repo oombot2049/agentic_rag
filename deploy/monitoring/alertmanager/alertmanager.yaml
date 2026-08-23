@@ -1,0 +1,34 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: ticket-webhook
+  group_by: [alertname, cluster, region, dependency, provider]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: pager-webhook
+      matchers: [severity="page", priority="p0"]
+      group_wait: 10s
+      repeat_interval: 30m
+    - receiver: ticket-webhook
+      matchers: [severity="ticket"]
+      repeat_interval: 24h
+
+receivers:
+  - name: pager-webhook
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/pager-webhook-url
+        send_resolved: true
+        max_alerts: 20
+  - name: ticket-webhook
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/ticket-webhook-url
+        send_resolved: true
+        max_alerts: 100
+
+inhibit_rules:
+  - source_matchers: [severity="page", priority="p0"]
+    target_matchers: [severity="ticket"]
+    equal: [service, component, cluster, region]

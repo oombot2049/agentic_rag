@@ -190,6 +190,26 @@ func TestValidationAndTTFTOmission(t *testing.T) {
 	}
 }
 
+func TestLogicalSLIClassificationIsClosedAndObservable(t *testing.T) {
+	value := testMetrics(t)
+	for _, classification := range []SLIClassification{SLIGood, SLIBad, SLIExcluded} {
+		if err := value.ObserveSLI(SLITurnCommand, classification); err != nil {
+			t.Fatal(err)
+		}
+		if got := metricValue(t, value, "agenticrag_sli_events_total", map[string]string{
+			"sli": "turn_command", "classification": string(classification),
+		}); got != 1 {
+			t.Errorf("%s count = %v", classification, got)
+		}
+	}
+	if err := value.ObserveSLI("attacker", SLIGood); err != ErrInvalid {
+		t.Fatalf("invalid SLI error = %v", err)
+	}
+	if err := value.ObserveSLI(SLITurnCommand, "attacker"); err != ErrInvalid {
+		t.Fatalf("invalid classification error = %v", err)
+	}
+}
+
 func testMetrics(t *testing.T) *Metrics {
 	t.Helper()
 	value, err := New(Config{AllowedModels: map[string][]string{"openai": {"gpt-5-mini"}, "anthropic": {"claude-sonnet"}}})
