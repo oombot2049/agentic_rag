@@ -39,9 +39,22 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000008_run_events.down.sql", "000008_run_events.up.sql",
 		"000009_run_cancellation.down.sql", "000009_run_cancellation.up.sql",
 		"000010_run_queue.down.sql", "000010_run_queue.up.sql",
+		"000011_retrieval_audit.down.sql", "000011_retrieval_audit.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestRetrievalAuditMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000011_retrieval_audit.up.sql")
+	for _, fragment := range []string{"CREATE TABLE retrieval_audits", "CREATE TABLE retrieval_audit_candidates",
+		"UNIQUE (tenant_id,retrieval_id,chunk_id)", "FOREIGN KEY (tenant_id,artifact_id)",
+		"octet_length(content_sha256)=32", "retrieval_audits_expiry_idx", "WHERE selected"} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("retrieval audit migration missing %q", fragment)
+		}
 	}
 }
 
