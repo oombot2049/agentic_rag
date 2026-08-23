@@ -59,6 +59,13 @@ supported: a changed configuration requires a rolling restart.
 | Redis | `AGENTICRAG_REDIS_MAX_TTL` | duration/24h | 1s–24h |
 | queue | `AGENTICRAG_QUEUE_MAX_PENDING_PER_TENANT` | integer/250 | 1–100,000 |
 | queue | `AGENTICRAG_QUEUE_MAX_PENDING_GLOBAL` | integer/6,000 | per-tenant–1,000,000 |
+| worker | `AGENTICRAG_WORKER_ID` | string/`worker-1` | safe text, 1–256 bytes |
+| worker | `AGENTICRAG_WORKER_MAX_CONCURRENCY` | integer/32 | 1–1,000 |
+| worker | `AGENTICRAG_WORKER_MAX_CONCURRENCY_PER_TENANT` | integer/4 | 1–global concurrency |
+| worker | `AGENTICRAG_WORKER_POLL_INTERVAL` | duration/`100ms` | 1ms–1m |
+| worker | `AGENTICRAG_WORKER_LEASE_DURATION` | duration/`30s` | 5s–5m |
+| worker | `AGENTICRAG_WORKER_RENEW_INTERVAL` | duration/`10s` | 1ms–lease duration (exclusive) |
+| worker | `AGENTICRAG_WORKER_RETRY_DELAY` | duration/`1s` | 0–24h |
 | logging | `AGENTICRAG_LOG_LEVEL` | enum/`info` | debug, info, warn, error |
 
 These are process/bootstrap values, not tenant policy. Capacity and Agent limits

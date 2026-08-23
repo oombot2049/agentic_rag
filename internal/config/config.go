@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
@@ -37,6 +38,13 @@ const (
 	keyRedisMaxTTL             = "AGENTICRAG_REDIS_MAX_TTL"
 	keyQueueMaxPendingTenant   = "AGENTICRAG_QUEUE_MAX_PENDING_PER_TENANT"
 	keyQueueMaxPendingGlobal   = "AGENTICRAG_QUEUE_MAX_PENDING_GLOBAL"
+	keyWorkerID                = "AGENTICRAG_WORKER_ID"
+	keyWorkerMaxConcurrency    = "AGENTICRAG_WORKER_MAX_CONCURRENCY"
+	keyWorkerMaxPerTenant      = "AGENTICRAG_WORKER_MAX_CONCURRENCY_PER_TENANT"
+	keyWorkerPollInterval      = "AGENTICRAG_WORKER_POLL_INTERVAL"
+	keyWorkerLeaseDuration     = "AGENTICRAG_WORKER_LEASE_DURATION"
+	keyWorkerRenewInterval     = "AGENTICRAG_WORKER_RENEW_INTERVAL"
+	keyWorkerRetryDelay        = "AGENTICRAG_WORKER_RETRY_DELAY"
 	keyLogLevel                = "AGENTICRAG_LOG_LEVEL"
 )
 
@@ -48,6 +56,8 @@ var knownKeys = []string{
 	keyRedisDialTimeout, keyRedisReadTimeout, keyRedisWriteTimeout, keyRedisPoolTimeout,
 	keyRedisHealthTimeout, keyRedisPoolSize, keyRedisMinIdleConns, keyRedisMaxTTL, keyLogLevel,
 	keyQueueMaxPendingTenant, keyQueueMaxPendingGlobal,
+	keyWorkerID, keyWorkerMaxConcurrency, keyWorkerMaxPerTenant, keyWorkerPollInterval,
+	keyWorkerLeaseDuration, keyWorkerRenewInterval, keyWorkerRetryDelay,
 }
 
 // Environment identifies the deployment behavior class.
@@ -109,6 +119,16 @@ type QueueConfig struct {
 	MaxPendingGlobal    int
 }
 
+type WorkerConfig struct {
+	ID                      string
+	MaxConcurrency          int
+	MaxConcurrencyPerTenant int
+	PollInterval            time.Duration
+	LeaseDuration           time.Duration
+	RenewInterval           time.Duration
+	RetryDelay              time.Duration
+}
+
 // Config is the process configuration after parsing and validation.
 type Config struct {
 	Environment Environment
@@ -116,6 +136,7 @@ type Config struct {
 	Postgres    PostgresConfig
 	Redis       RedisConfig
 	Queue       QueueConfig
+	Worker      WorkerConfig
 	Logging     LoggingConfig
 }
 
@@ -144,7 +165,10 @@ func Defaults() Config {
 			PoolTimeout: 2 * time.Second, HealthTimeout: 2 * time.Second,
 			PoolSize: 100, MinIdleConns: 5, MaxTTL: 24 * time.Hour,
 		},
-		Queue:   QueueConfig{MaxPendingPerTenant: 250, MaxPendingGlobal: 6000},
+		Queue: QueueConfig{MaxPendingPerTenant: 250, MaxPendingGlobal: 6000},
+		Worker: WorkerConfig{ID: "worker-1", MaxConcurrency: 32, MaxConcurrencyPerTenant: 4,
+			PollInterval: 100 * time.Millisecond, LeaseDuration: 30 * time.Second,
+			RenewInterval: 10 * time.Second, RetryDelay: time.Second},
 		Logging: LoggingConfig{Level: LogLevelInfo},
 	}
 }
@@ -216,6 +240,13 @@ func LoadSources(sources ...Source) (Config, error) {
 	applyDuration(values, keyRedisMaxTTL, &cfg.Redis.MaxTTL, &issues)
 	applyInt(values, keyQueueMaxPendingTenant, &cfg.Queue.MaxPendingPerTenant, &issues)
 	applyInt(values, keyQueueMaxPendingGlobal, &cfg.Queue.MaxPendingGlobal, &issues)
+	applyString(values, keyWorkerID, func(value string) { cfg.Worker.ID = value })
+	applyInt(values, keyWorkerMaxConcurrency, &cfg.Worker.MaxConcurrency, &issues)
+	applyInt(values, keyWorkerMaxPerTenant, &cfg.Worker.MaxConcurrencyPerTenant, &issues)
+	applyDuration(values, keyWorkerPollInterval, &cfg.Worker.PollInterval, &issues)
+	applyDuration(values, keyWorkerLeaseDuration, &cfg.Worker.LeaseDuration, &issues)
+	applyDuration(values, keyWorkerRenewInterval, &cfg.Worker.RenewInterval, &issues)
+	applyDuration(values, keyWorkerRetryDelay, &cfg.Worker.RetryDelay, &issues)
 	applyString(values, keyLogLevel, func(value string) { cfg.Logging.Level = LogLevel(value) })
 
 	issues = append(issues, cfg.validate()...)
@@ -299,6 +330,21 @@ func (c Config) validate() []FieldError {
 	if c.Queue.MaxPendingGlobal < c.Queue.MaxPendingPerTenant {
 		issues = append(issues, FieldError{Key: keyQueueMaxPendingGlobal, Rule: "must not be smaller than per-tenant pending capacity"})
 	}
+	if c.Worker.ID == "" || len(c.Worker.ID) > 256 || strings.TrimSpace(c.Worker.ID) != c.Worker.ID || strings.IndexFunc(c.Worker.ID, unicode.IsControl) >= 0 {
+		issues = append(issues, FieldError{Key: keyWorkerID, Rule: "must be safe text with at most 256 bytes"})
+	}
+	validateIntRange(&issues, keyWorkerMaxConcurrency, c.Worker.MaxConcurrency, 1, 1000)
+	validateIntRange(&issues, keyWorkerMaxPerTenant, c.Worker.MaxConcurrencyPerTenant, 1, 1000)
+	if c.Worker.MaxConcurrencyPerTenant > c.Worker.MaxConcurrency {
+		issues = append(issues, FieldError{Key: keyWorkerMaxPerTenant, Rule: "must not exceed global concurrency"})
+	}
+	validateRange(&issues, keyWorkerPollInterval, c.Worker.PollInterval, time.Millisecond, time.Minute)
+	validateRange(&issues, keyWorkerLeaseDuration, c.Worker.LeaseDuration, 5*time.Second, 5*time.Minute)
+	validateRange(&issues, keyWorkerRenewInterval, c.Worker.RenewInterval, time.Millisecond, 5*time.Minute)
+	if c.Worker.RenewInterval >= c.Worker.LeaseDuration {
+		issues = append(issues, FieldError{Key: keyWorkerRenewInterval, Rule: "must be shorter than lease duration"})
+	}
+	validateRange(&issues, keyWorkerRetryDelay, c.Worker.RetryDelay, 0, 24*time.Hour)
 	if !oneOf(string(c.Logging.Level), "debug", "info", "warn", "error") {
 		issues = append(issues, FieldError{Key: keyLogLevel, Rule: "must be debug, info, warn, or error"})
 	}
@@ -368,6 +414,13 @@ func (c Config) SafeFields() map[string]any {
 		"redis.max_ttl":                c.Redis.MaxTTL,
 		"queue.max_pending_per_tenant": c.Queue.MaxPendingPerTenant,
 		"queue.max_pending_global":     c.Queue.MaxPendingGlobal,
+		"worker.id":                    c.Worker.ID,
+		"worker.max_concurrency":       c.Worker.MaxConcurrency,
+		"worker.max_per_tenant":        c.Worker.MaxConcurrencyPerTenant,
+		"worker.poll_interval":         c.Worker.PollInterval,
+		"worker.lease_duration":        c.Worker.LeaseDuration,
+		"worker.renew_interval":        c.Worker.RenewInterval,
+		"worker.retry_delay":           c.Worker.RetryDelay,
 		"log.level":                    c.Logging.Level,
 	}
 }

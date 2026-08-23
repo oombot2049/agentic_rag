@@ -39,6 +39,10 @@ func TestPostgresRunQueuePartitionRedeliveryFencingAndCleanup(t *testing.T) {
 	if err := adapter.Enqueue(ctx, second); err != nil {
 		t.Fatal(err)
 	}
+	ready, err := adapter.ReadyTenants(ctx, ReadyTenantsCommand{At: created.Add(time.Second), Limit: 10})
+	if err != nil || len(ready) != 1 || ready[0] != first.TenantID {
+		t.Fatalf("ReadyTenants=%v error=%v", ready, err)
+	}
 	if err := adapter.Enqueue(ctx, first); err != nil {
 		t.Fatalf("idempotent replay=%v", err)
 	}

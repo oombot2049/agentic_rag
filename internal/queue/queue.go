@@ -53,6 +53,11 @@ type ClaimCommand struct {
 	At       time.Time
 }
 
+type ReadyTenantsCommand struct {
+	Limit int
+	At    time.Time
+}
+
 type LeaseCommand struct {
 	TenantID domain.TenantID
 	RunID    domain.RunID
@@ -80,6 +85,7 @@ type CleanupCommand struct {
 
 type RunQueue interface {
 	Enqueue(context.Context, Message) error
+	ReadyTenants(context.Context, ReadyTenantsCommand) ([]domain.TenantID, error)
 	Claim(context.Context, ClaimCommand) ([]Delivery, error)
 	Renew(context.Context, RenewCommand) (Delivery, error)
 	Ack(context.Context, LeaseCommand) error

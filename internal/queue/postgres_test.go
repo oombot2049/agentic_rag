@@ -109,8 +109,22 @@ func TestPostgresAdapterClaimRenewAckNackCleanupAndFencing(t *testing.T) {
 	})
 }
 
+func TestPostgresAdapterListsReadyTenants(t *testing.T) {
+	script := &queueSQLScript{queries: []queueScriptQuery{{rows: [][]driver.Value{{"ten_0001"}, {"ten_0002"}}}}}
+	values, err := scriptedAdapter(t, script, DefaultConfig()).ReadyTenants(context.Background(), ReadyTenantsCommand{Limit: 10, At: queueTestTime})
+	if err != nil || len(values) != 2 || values[0] != "ten_0001" || values[1] != "ten_0002" {
+		t.Fatalf("ReadyTenants=%v error=%v", values, err)
+	}
+	if !strings.Contains(script.calls[0].query, "GROUP BY message.tenant_id") {
+		t.Fatalf("query=%s", script.calls[0].query)
+	}
+}
+
 func TestPostgresAdapterRejectsInvalidCommandsBeforeSQL(t *testing.T) {
 	adapter := scriptedAdapter(t, &queueSQLScript{}, DefaultConfig())
+	if _, err := adapter.ReadyTenants(context.Background(), ReadyTenantsCommand{}); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("ReadyTenants error=%v", err)
+	}
 	if _, err := adapter.Claim(context.Background(), ClaimCommand{}); !errors.Is(err, ErrInvalidArgument) {
 		t.Errorf("Claim error=%v", err)
 	}

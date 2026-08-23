@@ -56,6 +56,9 @@ func TestLoadSourcesValidation(t *testing.T) {
 		{name: "bad addresses", values: MapSource{keyPostgresDSN: testDSN, keyServerAddress: "8080", keyRedisAddress: "redis"}, keys: []string{keyRedisAddress, keyServerAddress}},
 		{name: "bad log level", values: MapSource{keyPostgresDSN: testDSN, keyLogLevel: "verbose"}, keys: []string{keyLogLevel}},
 		{name: "queue global below tenant", values: MapSource{keyPostgresDSN: testDSN, keyQueueMaxPendingTenant: "20", keyQueueMaxPendingGlobal: "10"}, keys: []string{keyQueueMaxPendingGlobal}},
+		{name: "worker tenant exceeds global", values: MapSource{keyPostgresDSN: testDSN, keyWorkerMaxConcurrency: "2", keyWorkerMaxPerTenant: "3"}, keys: []string{keyWorkerMaxPerTenant}},
+		{name: "worker renew exceeds lease", values: MapSource{keyPostgresDSN: testDSN, keyWorkerLeaseDuration: "5s", keyWorkerRenewInterval: "5s"}, keys: []string{keyWorkerRenewInterval}},
+		{name: "unsafe worker id", values: MapSource{keyPostgresDSN: testDSN, keyWorkerID: "bad\nid"}, keys: []string{keyWorkerID}},
 	}
 
 	for _, tt := range tests {
@@ -100,6 +103,12 @@ func TestLoadSourcesParsesBoundaries(t *testing.T) {
 		keyRedisMaxTTL:             "24h",
 		keyQueueMaxPendingTenant:   "100000",
 		keyQueueMaxPendingGlobal:   "1000000",
+		keyWorkerMaxConcurrency:    "1000",
+		keyWorkerMaxPerTenant:      "1000",
+		keyWorkerPollInterval:      "1ms",
+		keyWorkerLeaseDuration:     "5m",
+		keyWorkerRenewInterval:     "1m",
+		keyWorkerRetryDelay:        "24h",
 		keyLogLevel:                "debug",
 	})
 	if err != nil {
@@ -117,6 +126,9 @@ func TestLoadSourcesParsesBoundaries(t *testing.T) {
 	}
 	if cfg.Queue.MaxPendingPerTenant != 100000 || cfg.Queue.MaxPendingGlobal != 1000000 {
 		t.Fatalf("queue boundaries not retained: %+v", cfg.Queue)
+	}
+	if cfg.Worker.MaxConcurrency != 1000 || cfg.Worker.MaxConcurrencyPerTenant != 1000 || cfg.Worker.LeaseDuration != 5*time.Minute {
+		t.Fatalf("worker boundaries not retained: %+v", cfg.Worker)
 	}
 }
 

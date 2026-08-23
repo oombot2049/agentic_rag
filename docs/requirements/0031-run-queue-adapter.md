@@ -69,7 +69,8 @@ does not promise exactly once.
 
 ## 4. Claim algorithm and fairness
 
-Claims are tenant-scoped. In one statement:
+`ReadyTenants` performs a bounded scan of tenants with an unblocked claimable
+partition head; it does not lease work. Claims are tenant-scoped. In one statement:
 
 1. choose READY or expired LEASED rows whose `available_at <= now`;
 2. exclude a row with an earlier unacknowledged message in the same Session;

@@ -105,6 +105,13 @@ func validateClaim(command ClaimCommand) error {
 	return nil
 }
 
+func validateReadyTenants(command ReadyTenantsCommand) error {
+	if command.Limit < 1 || command.Limit > 1000 || command.At.IsZero() {
+		return fmt.Errorf("%w: ready tenant limit or time", ErrInvalidArgument)
+	}
+	return nil
+}
+
 func validateLease(command LeaseCommand) error {
 	if _, err := domain.ParseTenantID(command.TenantID.String()); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidArgument, err)

@@ -107,6 +107,35 @@ func (a *PostgresAdapter) Claim(ctx context.Context, command ClaimCommand) ([]De
 	return result, err
 }
 
+// ReadyTenants returns a bounded, stable set of tenants with claimable work.
+// Tenant-local ordering remains enforced by Claim.
+func (a *PostgresAdapter) ReadyTenants(ctx context.Context, command ReadyTenantsCommand) ([]domain.TenantID, error) {
+	if err := validateReadyTenants(command); err != nil {
+		return nil, err
+	}
+	var result []domain.TenantID
+	err := a.withinTx(ctx, &sql.TxOptions{ReadOnly: true}, func(ctx context.Context, tx DBTX) error {
+		rows, err := tx.QueryContext(ctx, readyTenantsSQL, command.At.UTC(), command.Limit)
+		if err != nil {
+			return fmt.Errorf("list ready queue tenants: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var raw string
+			if err := rows.Scan(&raw); err != nil {
+				return err
+			}
+			tenantID, err := domain.ParseTenantID(raw)
+			if err != nil {
+				return fmt.Errorf("corrupt queue tenant: %w", err)
+			}
+			result = append(result, tenantID)
+		}
+		return rows.Err()
+	})
+	return result, err
+}
+
 func (a *PostgresAdapter) Renew(ctx context.Context, command RenewCommand) (Delivery, error) {
 	if err := validateLease(command.LeaseCommand); err != nil || command.Duration < MinimumLeaseDuration || command.Duration > MaximumLeaseDuration {
 		if err != nil {
@@ -314,6 +343,12 @@ WHERE tenant_id=$1 AND (run_id=$2 OR delivery_id=$3) LIMIT 1`
 const pendingCountsSQL = `SELECT count(*) FILTER (WHERE tenant_id=$1),count(*) FROM run_queue_messages WHERE status IN ('READY','LEASED')`
 const insertMessageSQL = `INSERT INTO run_queue_messages(tenant_id,run_id,session_id,turn_id,delivery_id,payload,
     traceparent,tracestate,available_at,created_at) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)`
+const readyTenantsSQL = `SELECT message.tenant_id FROM run_queue_messages message
+WHERE message.available_at<=$1 AND (message.status='READY' OR (message.status='LEASED' AND message.lease_expires_at<=$1))
+  AND NOT EXISTS (SELECT 1 FROM run_queue_messages earlier
+      WHERE earlier.tenant_id=message.tenant_id AND earlier.session_id=message.session_id AND earlier.status<>'ACKED'
+        AND (earlier.created_at,earlier.run_id)<(message.created_at,message.run_id))
+GROUP BY message.tenant_id ORDER BY min(message.available_at),message.tenant_id LIMIT $2`
 const claimSQL = `WITH candidates AS (
     SELECT message.tenant_id,message.run_id FROM run_queue_messages message
     WHERE message.tenant_id=$1 AND message.available_at<=$3
