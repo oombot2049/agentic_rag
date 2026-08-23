@@ -183,6 +183,7 @@ func (g *Gateway) attempt(ctx context.Context, provider Provider, request Reques
 
 func (g *Gateway) validateResponse(request Request, response ProviderResponse) error {
 	if !validFinishReason(response.FinishReason) || !validUsage(response.Usage) ||
+		response.Usage.OutputTokens > int64(request.MaxOutputTokens) ||
 		len(response.Text) > 4<<20 || len(response.Structured) > 4<<20 ||
 		(response.ProviderRequestID != "" && !validIdentifier(response.ProviderRequestID, 256)) {
 		return badResponse("finish reason, usage, or request ID")

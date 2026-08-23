@@ -235,6 +235,7 @@ func TestGatewayRejectsInvalidProviderResponsesAndSchema(t *testing.T) {
 		wantKind  ErrorKind
 	}{
 		{name: "usage mismatch", request: validTextRequest(), response: ProviderResponse{Text: "ok", FinishReason: FinishReasonStop, Usage: Usage{InputTokens: 1, OutputTokens: 1, TotalTokens: 3}}, validator: acceptingValidator(), wantKind: ErrorBadResponse},
+		{name: "output exceeds request", request: validTextRequest(), response: ProviderResponse{Text: "ok", FinishReason: FinishReasonStop, Usage: Usage{InputTokens: 1, OutputTokens: 101, TotalTokens: 102}}, validator: acceptingValidator(), wantKind: ErrorBadResponse},
 		{name: "unknown finish", request: validTextRequest(), response: ProviderResponse{Text: "ok", FinishReason: "UNKNOWN", Usage: Usage{}}, validator: acceptingValidator(), wantKind: ErrorBadResponse},
 		{name: "structured contains text", request: validStructuredRequest(), response: ProviderResponse{Text: "leak", Structured: json.RawMessage(`{}`), FinishReason: FinishReasonStop, Usage: Usage{}}, validator: acceptingValidator(), wantKind: ErrorBadResponse},
 		{name: "schema mismatch", request: validStructuredRequest(), response: ProviderResponse{Structured: json.RawMessage(`{}`), FinishReason: FinishReasonStop, Usage: Usage{}}, validator: StructuredValidatorFunc(func(json.RawMessage, json.RawMessage) error { return validationError }), wantKind: ErrorBadResponse},
