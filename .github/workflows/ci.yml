@@ -33,7 +33,7 @@ jobs:
       - name: Locate module cache
         id: gomodcache
         run: echo "path=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v5.0.5
+      - uses: actions/cache@v6.1.0
         with:
           path: ${{ steps.gomodcache.outputs.path }}
           key: gomod-${{ runner.os }}-${{ matrix.go }}-${{ hashFiles('go.sum') }}
