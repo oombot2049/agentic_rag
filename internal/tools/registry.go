@@ -4,6 +4,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,9 +82,10 @@ type Call struct {
 }
 
 type Invocation struct {
-	Definition Definition
-	Scope      Scope
-	Arguments  json.RawMessage
+	Definition    Definition
+	Scope         Scope
+	Arguments     json.RawMessage
+	authorization [sha256.Size]byte
 }
 
 type Registry struct {
@@ -162,10 +164,36 @@ func (r *Registry) Resolve(ctx context.Context, call Call) (Invocation, error) {
 	if err := r.schemas.Validate(definition.InputSchema, call.Arguments); err != nil {
 		return Invocation{}, fmt.Errorf("%w: arguments", ErrInvalidPayload)
 	}
-	return Invocation{cloneDefinition(definition), call.Scope, append(json.RawMessage(nil), call.Arguments...)}, nil
+	invocation := Invocation{Definition: cloneDefinition(definition), Scope: call.Scope,
+		Arguments: append(json.RawMessage(nil), call.Arguments...)}
+	invocation.authorization = invocationDigest(invocation)
+	return invocation, nil
+}
+
+// ValidateInvocation verifies that Resolve issued the capability and that no
+// definition, scope or argument byte was changed afterwards.
+func (r *Registry) ValidateInvocation(invocation Invocation) error {
+	r.mu.RLock()
+	definition, exists := r.definitions[toolKey(invocation.Definition.Name, invocation.Definition.Version)]
+	sealed := r.sealed
+	r.mu.RUnlock()
+	if !sealed || !exists || definitionDigest(definition) != definitionDigest(invocation.Definition) ||
+		invocation.authorization != invocationDigest(invocation) || !validScope(definition.Scope, invocation.Scope) {
+		return ErrDenied
+	}
+	if err := strictJSONObject(invocation.Arguments); err != nil {
+		return ErrDenied
+	}
+	if err := r.schemas.Validate(definition.InputSchema, invocation.Arguments); err != nil {
+		return ErrDenied
+	}
+	return nil
 }
 
 func (r *Registry) ValidateOutput(invocation Invocation, output json.RawMessage) error {
+	if err := r.ValidateInvocation(invocation); err != nil {
+		return err
+	}
 	if err := strictJSONObject(output); err != nil {
 		return fmt.Errorf("%w: output", ErrInvalidPayload)
 	}
@@ -354,4 +382,10 @@ func definitionDigest(value Definition) string {
 		string(value.Scope) + "\x00" + string(value.Effect) + "\x00" +
 		string(value.InputSchema) + "\x00" + string(value.OutputSchema) + "\x00" +
 		strings.Join(value.RequiredPermissions, "\x00")
+}
+
+func invocationDigest(value Invocation) [sha256.Size]byte {
+	material := definitionDigest(value.Definition) + "\x00" + value.Scope.TenantID.String() + "\x00" +
+		value.Scope.SessionID.String() + "\x00" + value.Scope.RunID.String() + "\x00" + string(value.Arguments)
+	return sha256.Sum256([]byte(material))
 }
