@@ -5,12 +5,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/agenticrag/agenticrag/internal/redaction"
 )
 
 func decodeLine(t *testing.T, output string) map[string]any {
@@ -110,6 +115,80 @@ func TestSensitiveAttributesAreRedacted(t *testing.T) {
 	tool := entry["tool"].(map[string]any)
 	if tool["password"] != redacted || tool["arguments"] != "safe-name" {
 		t.Fatalf("nested redaction mismatch: %v", tool)
+	}
+}
+
+func TestSensitiveValuesAndErrorsAreRedactedRegardlessOfKey(t *testing.T) {
+	var output bytes.Buffer
+	logger := NewJSON(&output, Options{})
+	logger.ErrorContext(context.Background(), "provider_failed",
+		"note", "Authorization: Bearer abcdefghijklmnop",
+		"error", errors.New("database leaked person@example.com"),
+		"payload", []byte("binary-secret"),
+	)
+	raw := output.String()
+	for _, forbidden := range []string{"abcdefghijklmnop", "person@example.com", "binary-secret", "database leaked"} {
+		if strings.Contains(raw, forbidden) {
+			t.Fatalf("log leaked %q: %s", forbidden, raw)
+		}
+	}
+	entry := decodeLine(t, raw)
+	if !strings.Contains(entry["note"].(string), redacted) || entry["error"] != redacted || entry["payload"] != redacted {
+		t.Fatalf("log was not uniformly redacted: %v", entry)
+	}
+}
+
+func TestMessageKeysAndArbitraryValuesFailSafe(t *testing.T) {
+	var output bytes.Buffer
+	logger := NewJSON(&output, Options{})
+	logger.InfoContext(context.Background(), "Bearer abcdefghijklmnop",
+		"person@example.com", "value",
+		"object", struct{ Private string }{Private: "do-not-encode"},
+	)
+	raw := output.String()
+	for _, forbidden := range []string{"abcdefghijklmnop", "person@example.com", "do-not-encode"} {
+		if strings.Contains(raw, forbidden) {
+			t.Fatalf("log leaked %q: %s", forbidden, raw)
+		}
+	}
+	entry := decodeLine(t, raw)
+	if !strings.Contains(entry["msg"].(string), redacted) || entry["redacted_field"] != "value" || entry["object"] != redacted {
+		t.Fatalf("fail-safe log mismatch: %v", entry)
+	}
+}
+
+func TestLoggerResolvesTenantPolicyFromCorrelation(t *testing.T) {
+	custom, err := redaction.NewPolicy(redaction.Config{
+		Version: "tenant-v1", CustomRules: []redaction.Rule{{Name: "account", Pattern: `ACME-[0-9]{6}`}},
+		SensitiveArtifactMaxTTL: time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := redaction.NewPolicy(redaction.Config{Version: "base-v1", SensitiveArtifactMaxTTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resolutions atomic.Int64
+	redactor, err := redaction.NewService(redaction.ResolverFunc(func(_ context.Context, tenant string) (*redaction.Policy, error) {
+		resolutions.Add(1)
+		if tenant == "ten_custom" {
+			return custom, nil
+		}
+		return baseline, nil
+	}), redaction.StrictPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	logger := NewJSON(&output, Options{Redactor: redactor})
+	resolutions.Store(0)
+	logger.InfoContext(WithCorrelation(context.Background(), Correlation{TenantID: "ten_custom"}), "observed", "account", "ACME-123456")
+	if entry := decodeLine(t, output.String()); entry["account"] != redacted {
+		t.Fatalf("tenant policy was not applied: %v", entry)
+	}
+	if resolutions.Load() != 1 {
+		t.Fatalf("policy resolutions = %d, want one per record", resolutions.Load())
 	}
 }
 

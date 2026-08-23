@@ -4,21 +4,34 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+
+	"github.com/agenticrag/agenticrag/internal/redaction"
 )
 
-const redacted = "[REDACTED]"
+const redacted = redaction.Replacement
+
+var processRedactor = mustDefaultRedactor()
 
 type contextHandler struct {
-	next slog.Handler
+	next     slog.Handler
+	redactor *redaction.Service
 }
 
 // NewContextHandler wraps a handler with correlation injection, reserved-field
 // protection and sensitive-attribute redaction.
 func NewContextHandler(next slog.Handler) slog.Handler {
+	return NewContextHandlerWithRedactor(next, defaultRedactor())
+}
+
+// NewContextHandlerWithRedactor installs a tenant-aware redaction service.
+func NewContextHandlerWithRedactor(next slog.Handler, redactorService *redaction.Service) slog.Handler {
 	if next == nil {
 		panic("log: nil handler")
 	}
-	return &contextHandler{next: next}
+	if redactorService == nil {
+		redactorService = defaultRedactor()
+	}
+	return &contextHandler{next: next, redactor: redactorService}
 }
 
 func (h *contextHandler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -26,29 +39,34 @@ func (h *contextHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *contextHandler) Handle(ctx context.Context, record slog.Record) error {
-	clean := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+	correlation := CorrelationFromContext(ctx)
+	view := h.redactor.View(ctx, correlation.TenantID)
+	message := view.Redact(redaction.BoundaryLog, record.Message).Value
+	clean := slog.NewRecord(record.Time, record.Level, message, record.PC)
 	record.Attrs(func(attr slog.Attr) bool {
 		if !isReserved(attr.Key) {
-			clean.AddAttrs(sanitizeAttr(attr))
+			clean.AddAttrs(h.sanitizeAttr(view, attr))
 		}
 		return true
 	})
-	clean.AddAttrs(correlationAttrs(CorrelationFromContext(ctx))...)
+	clean.AddAttrs(correlationAttrs(correlation)...)
 	return h.next.Handle(ctx, clean)
 }
 
 func (h *contextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	clean := make([]slog.Attr, 0, len(attrs))
+	view := h.redactor.View(context.Background(), "")
 	for _, attr := range attrs {
 		if !isReserved(attr.Key) {
-			clean = append(clean, sanitizeAttr(attr))
+			clean = append(clean, h.sanitizeAttr(view, attr))
 		}
 	}
-	return &contextHandler{next: h.next.WithAttrs(clean)}
+	return &contextHandler{next: h.next.WithAttrs(clean), redactor: h.redactor}
 }
 
 func (h *contextHandler) WithGroup(name string) slog.Handler {
-	return &contextHandler{next: h.next.WithGroup(name)}
+	view := h.redactor.View(context.Background(), "")
+	return &contextHandler{next: h.next.WithGroup(safeKey(view, name)), redactor: h.redactor}
 }
 
 func correlationAttrs(c Correlation) []slog.Attr {
@@ -72,23 +90,39 @@ func correlationAttrs(c Correlation) []slog.Attr {
 	return attrs
 }
 
-func sanitizeAttr(attr slog.Attr) slog.Attr {
+func (h *contextHandler) sanitizeAttr(view redaction.View, attr slog.Attr) slog.Attr {
 	attr.Value = attr.Value.Resolve()
-	if isSensitive(attr.Key) {
+	if view.SensitiveKey(attr.Key) {
 		return slog.String(attr.Key, redacted)
 	}
-	if attr.Value.Kind() != slog.KindGroup {
+	attr.Key = safeKey(view, attr.Key)
+	switch attr.Value.Kind() {
+	case slog.KindString:
+		result := view.RedactField(redaction.BoundaryLog, attr.Key, attr.Value.String())
+		return slog.String(attr.Key, result.Value)
+	case slog.KindGroup:
+		children := attr.Value.Group()
+		clean := make([]slog.Attr, 0, len(children))
+		for _, child := range children {
+			if !isReserved(child.Key) {
+				clean = append(clean, h.sanitizeAttr(view, child))
+			}
+		}
+		attr.Value = slog.GroupValue(clean...)
+		return attr
+	case slog.KindAny:
+		return slog.String(attr.Key, redacted)
+	default:
 		return attr
 	}
-	children := attr.Value.Group()
-	clean := make([]slog.Attr, 0, len(children))
-	for _, child := range children {
-		if !isReserved(child.Key) {
-			clean = append(clean, sanitizeAttr(child))
-		}
+}
+
+func safeKey(view redaction.View, key string) string {
+	result := view.Redact(redaction.BoundaryLog, key)
+	if result.Value != key {
+		return "redacted_field"
 	}
-	attr.Value = slog.GroupValue(clean...)
-	return attr
+	return key
 }
 
 func isReserved(key string) bool {
@@ -101,20 +135,19 @@ func isReserved(key string) bool {
 }
 
 func isSensitive(key string) bool {
-	normalized := normalizeKey(key)
-	switch normalized {
-	case "authorization", "cookie", "set_cookie", "password", "passwd",
-		"secret", "api_key", "access_token", "refresh_token", "dsn",
-		"prompt", "prompt_text", "prompt_content", "content", "message_content",
-		"tool_arguments", "retrieval_content":
-		return true
+	return defaultRedactor().SensitiveKey(context.Background(), "", key)
+}
+
+func defaultRedactor() *redaction.Service {
+	return processRedactor
+}
+
+func mustDefaultRedactor() *redaction.Service {
+	service, err := redaction.NewStatic(redaction.StrictPolicy())
+	if err != nil {
+		panic(err)
 	}
-	for _, suffix := range []string{"_password", "_passwd", "_secret", "_api_key", "_authorization", "_cookie", "_dsn"} {
-		if strings.HasSuffix(normalized, suffix) {
-			return true
-		}
-	}
-	return false
+	return service
 }
 
 func normalizeKey(key string) string {

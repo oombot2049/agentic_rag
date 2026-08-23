@@ -51,8 +51,10 @@ not perform network I/O and does not own log rotation.
 
 ## 4. Sensitive-data policy
 
+The handler delegates to the [P7-04 unified redactor](0058-unified-sensitive-data-redaction.md).
 Exact sensitive keys and credential suffixes are replaced by `[REDACTED]`,
-including nested groups and logger-scoped attributes. The protected set includes
+including nested groups and logger-scoped attributes. String values, messages
+and field names also receive content detection. The protected set includes
 authorization/cookie credentials, password/secret/API-key/DSN fields, Prompt
 content, general content, tool arguments and retrieval content. Safe metadata
 keys such as `prompt_hash`, `prompt_bytes`, `token_count`, `artifact_id` and
@@ -114,4 +116,5 @@ gates also run.
 P1-05 installs the logger during bootstrap after configuration validation. P3
 middleware generates/extracts request and trace IDs and attaches tenant/session
 scope. P7 adds OpenTelemetry trace/span correlation, metrics, audit separation,
-sampling and production collector behavior.
+sampling and production collector behavior. P7-04 supplies the tenant-aware
+policy engine while preserving this handler's strict process-level fallback.

@@ -3,6 +3,8 @@ package log
 import (
 	"io"
 	"log/slog"
+
+	"github.com/agenticrag/agenticrag/internal/redaction"
 )
 
 // Options configures process-level JSON logging. Empty static values are
@@ -13,6 +15,7 @@ type Options struct {
 	Service     string
 	Environment string
 	Version     string
+	Redactor    *redaction.Service
 }
 
 // NewJSON constructs a context-aware JSON logger.
@@ -25,7 +28,7 @@ func NewJSON(writer io.Writer, options Options) *slog.Logger {
 		AddSource: options.AddSource,
 		Level:     level,
 	})
-	logger := slog.New(NewContextHandler(handler))
+	logger := slog.New(NewContextHandlerWithRedactor(handler, options.Redactor))
 	attrs := make([]any, 0, 6)
 	if options.Service != "" {
 		attrs = append(attrs, "service", options.Service)
