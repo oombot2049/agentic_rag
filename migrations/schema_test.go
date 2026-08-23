@@ -42,9 +42,35 @@ func TestMigrationFilesArePairedAndEmbedded(t *testing.T) {
 		"000011_retrieval_audit.down.sql", "000011_retrieval_audit.up.sql",
 		"000012_tool_call_ledger.down.sql", "000012_tool_call_ledger.up.sql",
 		"000013_tool_approvals.down.sql", "000013_tool_approvals.up.sql",
+		"000014_tool_audit.down.sql", "000014_tool_audit.up.sql",
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("embedded SQL files = %v, want %v", names, want)
+	}
+}
+
+func TestToolAuditMigrationContract(t *testing.T) {
+	t.Parallel()
+	up := readMigration(t, "000014_tool_audit.up.sql")
+	for _, fragment := range []string{
+		"CREATE TABLE tool_audits", "CREATE TABLE tool_audit_attempts",
+		"PRIMARY KEY (tenant_id,id)", "UNIQUE (tenant_id,tool_call_id)",
+		"octet_length(arguments_sha256)=32", "policy_decision IN ('ALLOW','DENY','REQUIRE_APPROVAL')",
+		"artifact_sha256=result_sha256", "tool_audits_run_idx", "tool_audits_expiry_idx",
+		"FOREIGN KEY (tenant_id,artifact_id)",
+	} {
+		if !strings.Contains(up, fragment) {
+			t.Errorf("tool audit migration missing %q", fragment)
+		}
+	}
+	for _, forbidden := range []string{"arguments json", "result json", "credential", "prompt", "reasoning"} {
+		if strings.Contains(strings.ToLower(up), forbidden) {
+			t.Errorf("tool audit migration stores forbidden content %q", forbidden)
+		}
+	}
+	down := readMigration(t, "000014_tool_audit.down.sql")
+	if strings.Index(down, "DROP TABLE tool_audit_attempts") > strings.Index(down, "DROP TABLE tool_audits") {
+		t.Fatal("tool audit down migration has unsafe dependency order")
 	}
 }
 
