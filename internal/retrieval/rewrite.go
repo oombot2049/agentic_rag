@@ -14,6 +14,8 @@ import (
 	"github.com/agenticrag/agenticrag/internal/contextmgr"
 	"github.com/agenticrag/agenticrag/internal/domain"
 	"github.com/agenticrag/agenticrag/internal/llm"
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var ErrInvalid = errors.New("invalid query rewrite input")
@@ -48,10 +50,15 @@ func NewRewriter(generator Generator, minimumConfidence float64) (*Rewriter, err
 	}
 	return &Rewriter{generator, minimumConfidence}, nil
 }
-func (r *Rewriter) Rewrite(ctx context.Context, request Request) (Result, error) {
+func (r *Rewriter) Rewrite(ctx context.Context, request Request) (result Result, resultErr error) {
 	if ctx == nil || !validText(request.OriginalQuestion, maxQueryBytes) || request.ProviderID == "" || request.ModelID == "" {
 		return Result{}, ErrInvalid
 	}
+	ctx, span := observabilitytrace.StartRAG(ctx, "rewrite")
+	defer func() {
+		span.SetAttributes(attribute.Bool("agenticrag.rag.rewritten", result.Rewritten), attribute.Bool("agenticrag.rag.fallback", result.Fallback))
+		observabilitytrace.End(span, resultErr)
+	}()
 	entries := request.Snapshot.Entries()
 	if len(entries) == 0 {
 		return Result{}, ErrInvalid

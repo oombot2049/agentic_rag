@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type StructuredValidator interface {
@@ -110,10 +113,18 @@ func validateConfig(value Config) error {
 	return nil
 }
 
-func (g *Gateway) Generate(ctx context.Context, request Request) (Result, error) {
+func (g *Gateway) Generate(ctx context.Context, request Request) (result Result, resultErr error) {
 	if ctx == nil {
 		return Result{}, fmt.Errorf("%w: nil context", ErrInvalidArgument)
 	}
+	ctx, span := observabilitytrace.StartLLM(ctx, request.ProviderID, request.ModelID)
+	defer func() {
+		span.SetAttributes(attribute.Int("gen_ai.request.attempts", result.Attempts),
+			attribute.Int64("gen_ai.usage.input_tokens", result.Response.Usage.InputTokens),
+			attribute.Int64("gen_ai.usage.output_tokens", result.Response.Usage.OutputTokens),
+			attribute.Int64("agenticrag.llm.cost_nanos", result.CostNanos))
+		observabilitytrace.End(span, resultErr)
+	}()
 	if err := validateRequest(request); err != nil {
 		return Result{}, err
 	}

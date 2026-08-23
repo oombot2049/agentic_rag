@@ -13,6 +13,7 @@ import (
 
 	"github.com/agenticrag/agenticrag/internal/domain"
 	observabilitylog "github.com/agenticrag/agenticrag/internal/observability/log"
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
 	"github.com/agenticrag/agenticrag/internal/queue"
 )
 
@@ -364,10 +365,15 @@ func (w *Worker) execute(taskCtx context.Context, delivery queue.Delivery) {
 		w.mu.Unlock()
 		w.taskWG.Done()
 	}()
-	ctx, cancel := context.WithCancel(taskCtx)
+	ctx, span := observabilitytrace.StartRun(taskCtx, observabilitytrace.Carrier{
+		TraceParent: delivery.Trace.TraceParent, TraceState: delivery.Trace.TraceState,
+	}, delivery.DeliveryCount)
+	var spanErr error
+	defer func() { observabilitytrace.End(span, spanErr) }()
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = observabilitylog.WithCorrelation(ctx, observabilitylog.Correlation{TenantID: delivery.TenantID.String(),
-		SessionID: delivery.SessionID.String(), TurnID: delivery.TurnID.String(), RunID: delivery.RunID.String(), TraceID: traceID(delivery.Trace.TraceParent)})
+		SessionID: delivery.SessionID.String(), TurnID: delivery.TurnID.String(), RunID: delivery.RunID.String(), TraceID: observabilitytrace.TraceID(ctx)})
 	renewDone := make(chan struct{})
 	renewLost := make(chan error, 1)
 	w.mu.Lock()
@@ -377,6 +383,7 @@ func (w *Worker) execute(taskCtx context.Context, delivery queue.Delivery) {
 	result, panicked := w.process(ctx, Task{Delivery: delivery, DrainRequested: w.drain})
 	close(renewDone)
 	if err := <-renewLost; err != nil {
+		spanErr = err
 		w.mu.Lock()
 		w.fenced++
 		w.mu.Unlock()
@@ -465,14 +472,6 @@ func (w *Worker) returnClaim(delivery queue.Delivery, reason string) {
 
 func leaseCommand(delivery queue.Delivery, at time.Time) queue.LeaseCommand {
 	return queue.LeaseCommand{TenantID: delivery.TenantID, RunID: delivery.RunID, Owner: delivery.LeaseOwner, Token: delivery.LeaseToken, At: at.UTC()}
-}
-
-func traceID(traceParent string) string {
-	parts := strings.Split(traceParent, "-")
-	if len(parts) == 4 {
-		return parts[1]
-	}
-	return ""
 }
 
 type discardWriter struct{}

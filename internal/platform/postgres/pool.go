@@ -8,7 +8,10 @@ import (
 	"time"
 
 	"github.com/agenticrag/agenticrag/internal/config"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+	"go.opentelemetry.io/otel"
 )
 
 type Pool struct {
@@ -18,10 +21,13 @@ type Pool struct {
 
 // Open creates, configures and verifies a PostgreSQL pool.
 func Open(ctx context.Context, cfg config.PostgresConfig) (*Pool, error) {
-	db, err := sql.Open("pgx", cfg.DSN.Reveal())
+	connectionConfig, err := pgx.ParseConfig(cfg.DSN.Reveal())
 	if err != nil {
-		return nil, &operationError{operation: "open driver", cause: err}
+		return nil, &operationError{operation: "parse configuration", cause: err}
 	}
+	tracer, _ := observabilitytrace.NewPGXTracer(otel.GetTracerProvider())
+	connectionConfig.Tracer = tracer
+	db := stdlib.OpenDB(*connectionConfig)
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
 	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)

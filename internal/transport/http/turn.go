@@ -9,6 +9,7 @@ import (
 
 	"github.com/agenticrag/agenticrag/internal/apperror"
 	"github.com/agenticrag/agenticrag/internal/auth"
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
 	"github.com/agenticrag/agenticrag/internal/queue"
 	"github.com/agenticrag/agenticrag/internal/turn"
 )
@@ -107,6 +108,13 @@ func (h *TurnHandler) create(response http.ResponseWriter, request *http.Request
 	if err != nil {
 		auth.WriteFailure(response, request, apperror.New(apperror.CodeInvalidArgument, false, err))
 		return
+	}
+	if current := observabilitytrace.Inject(request.Context()); current.TraceParent != "" {
+		trace, err = queue.NewTraceContext(current.TraceParent, current.TraceState)
+		if err != nil {
+			auth.WriteFailure(response, request, apperror.New(apperror.CodeInvalidArgument, false, err))
+			return
+		}
 	}
 	var maxSteps *int
 	if body.Execution.present {

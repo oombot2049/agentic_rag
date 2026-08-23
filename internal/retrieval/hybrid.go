@@ -11,6 +11,8 @@ import (
 
 	"github.com/agenticrag/agenticrag/internal/domain"
 	"github.com/agenticrag/agenticrag/internal/knowledge"
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -102,10 +104,15 @@ type routeResult struct {
 	err    error
 }
 
-func (r *HybridRetriever) Retrieve(ctx context.Context, request HybridRequest) (HybridResult, error) {
+func (r *HybridRetriever) Retrieve(ctx context.Context, request HybridRequest) (result HybridResult, resultErr error) {
 	if ctx == nil || !validHybridRequest(request, r.config.MaximumTopK) {
 		return HybridResult{}, ErrInvalid
 	}
+	ctx, span := observabilitytrace.StartRAG(ctx, "hybrid")
+	defer func() {
+		span.SetAttributes(attribute.Int("agenticrag.rag.result_count", len(result.Hits)), attribute.Bool("agenticrag.rag.degraded", result.Degraded))
+		observabilitytrace.End(span, resultErr)
+	}()
 	version, err := r.resolver.ResolveActive(ctx, request.TenantID, request.KnowledgeBaseID)
 	if err != nil {
 		return HybridResult{}, err
@@ -151,7 +158,7 @@ func (r *HybridRetriever) Retrieve(ctx context.Context, request HybridRequest) (
 		return HybridResult{}, fmt.Errorf("%w: VECTOR_AND_BM25", ErrRetrievalFailed)
 	}
 	hits := fuse(vectorValues, bm25Values, r.config)
-	result := HybridResult{Hits: hits, VersionID: version}
+	result = HybridResult{Hits: hits, VersionID: version}
 	if len(result.Hits) > request.TopK {
 		result.Hits = result.Hits[:request.TopK]
 	}

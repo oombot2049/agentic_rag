@@ -14,6 +14,7 @@ import (
 	"github.com/agenticrag/agenticrag/internal/idempotency"
 	sessioncontrol "github.com/agenticrag/agenticrag/internal/session"
 	"github.com/agenticrag/agenticrag/internal/turn"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 type turnHandlerStore struct {
@@ -21,6 +22,29 @@ type turnHandlerStore struct {
 	command turn.CreatePersistence
 	stored  *idempotency.Response
 	err     error
+}
+
+func TestTurnHTTPPersistsCurrentServerSpanInsteadOfRemoteParent(t *testing.T) {
+	store := &turnHandlerStore{}
+	service, _ := turn.NewService(store, turn.IDGeneratorFunc(func() (turn.IDs, error) {
+		return turn.IDs{TurnID: "trn_0001", MessageID: "msg_0001", RunID: "run_0001", EventID: "evt_0001"}, nil
+	}))
+	handler, _ := NewTurnHandler(service)
+	server := authenticatedSessionRoutes(t, handler.Routes(), "ten_0001", []string{"sessions:write"})
+	traceID, _ := oteltrace.TraceIDFromHex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	spanID, _ := oteltrace.SpanIDFromHex("bbbbbbbbbbbbbbbb")
+	spanContext := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{TraceID: traceID, SpanID: spanID, TraceFlags: oteltrace.FlagsSampled})
+	request := httptest.NewRequest(http.MethodPost, "/v1/sessions/ses_0001/turns", strings.NewReader(`{"expected_context_version":0,"message":{"content":"x"}}`))
+	request = request.WithContext(oteltrace.ContextWithSpanContext(request.Context(), spanContext))
+	request.Header.Set("Authorization", "Bearer valid-token")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "idem-key-00000001")
+	request.Header.Set("Traceparent", "00-11111111111111111111111111111111-2222222222222222-01")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusAccepted || store.command.Trace.TraceParent != "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01" {
+		t.Fatalf("status=%d persisted trace=%+v", response.Code, store.command.Trace)
+	}
 }
 
 func (s *turnHandlerStore) Create(_ context.Context, command turn.CreatePersistence) (turn.CreateResult, error) {

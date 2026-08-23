@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/agenticrag/agenticrag/internal/config"
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
 	goredis "github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
 )
 
 var (
@@ -28,6 +30,8 @@ func Open(ctx context.Context, cfg config.RedisConfig) (*Client, error) {
 		WriteTimeout: cfg.WriteTimeout, PoolTimeout: cfg.PoolTimeout,
 		PoolSize: cfg.PoolSize, MinIdleConns: cfg.MinIdleConns,
 	})
+	hook, _ := observabilitytrace.NewRedisHook(otel.GetTracerProvider())
+	underlying.AddHook(hook)
 	connectCtx, cancel := context.WithTimeout(ctx, cfg.DialTimeout)
 	defer cancel()
 	if err := underlying.Ping(connectCtx).Err(); err != nil {

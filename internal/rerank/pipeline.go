@@ -13,6 +13,8 @@ import (
 
 	"github.com/agenticrag/agenticrag/internal/domain"
 	"github.com/agenticrag/agenticrag/internal/knowledge"
+	observabilitytrace "github.com/agenticrag/agenticrag/internal/observability/trace"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var ErrInvalid = errors.New("invalid rerank input")
@@ -70,10 +72,15 @@ func NewPipeline(provider Provider, counter TokenCounter, compressor Compressor,
 	}
 	return &Pipeline{provider, counter, compressor, config}, nil
 }
-func (p *Pipeline) Run(ctx context.Context, query string, input []Candidate) (Result, error) {
+func (p *Pipeline) Run(ctx context.Context, query string, input []Candidate) (result Result, resultErr error) {
 	if ctx == nil || strings.TrimSpace(query) == "" || len(input) == 0 || len(input) > p.config.MaximumCandidates {
 		return Result{}, ErrInvalid
 	}
+	ctx, span := observabilitytrace.StartRAG(ctx, "rerank")
+	defer func() {
+		span.SetAttributes(attribute.Int("agenticrag.rag.result_count", len(result.Items)), attribute.Bool("agenticrag.rag.fallback", result.RerankFallback))
+		observabilitytrace.End(span, resultErr)
+	}()
 	candidates, dropped, err := deduplicate(input)
 	if err != nil {
 		return Result{}, err
@@ -120,7 +127,7 @@ func (p *Pipeline) Run(ctx context.Context, query string, input []Candidate) (Re
 		return strings.Compare(left.candidate.ChunkID.String(), right.candidate.ChunkID.String())
 	})
 	items := merge(ranked)
-	result := Result{RerankFallback: fallback, DroppedDuplicates: dropped}
+	result = Result{RerankFallback: fallback, DroppedDuplicates: dropped}
 	for _, item := range items {
 		tokens, countErr := p.counter.Count(ctx, item.Content)
 		if countErr != nil {
