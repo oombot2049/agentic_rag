@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "dataset_id": "agenticrag_rag_v1",
+  "dataset_sha256": "0f7d774963b117ffad2b2a955b59c44376efcc3f84ea467a9c60819e0a6fd8a2",
+  "top_k": 5,
+  "reference": {
+    "recall_at_k": 1.0,
+    "mrr_at_k": 1.0,
+    "citation_correctness": 1.0,
+    "faithfulness": 1.0
+  },
+  "minimum": {
+    "recall_at_k": 0.90,
+    "mrr_at_k": 0.90,
+    "citation_correctness": 0.90,
+    "faithfulness": 0.95
+  },
+  "maximum_regression": {
+    "recall_at_k": 0.10,
+    "mrr_at_k": 0.10,
+    "citation_correctness": 0.10,
+    "faithfulness": 0.05
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "dataset_id": "agenticrag_rag_v1",
+  "predictions": [
+    {"case_id": "case_refund_eta", "ranked_chunk_ids": ["chk_refund_0001", "chk_refund_0002", "chk_noise_0001"], "cited_artifact_ids": ["art_refund_0001"], "answer": "退款通常在五个工作日内到账。"},
+    {"case_id": "case_password_policy", "ranked_chunk_ids": ["chk_security_0001", "chk_noise_0002"], "cited_artifact_ids": ["art_security_0001"], "answer": "管理员密码要求至少十二个字符。"},
+    {"case_id": "case_tenant_filter", "ranked_chunk_ids": ["chk_tenant_0001", "chk_tenant_0002", "chk_noise_0003"], "cited_artifact_ids": ["art_tenant_0001"], "answer": "服务端在每条检索路径上强制租户过滤。"},
+    {"case_id": "case_invoice_date", "ranked_chunk_ids": ["chk_billing_0001"], "cited_artifact_ids": ["art_billing_0001"], "answer": "账单在每月一日生成。"},
+    {"case_id": "case_event_retention", "ranked_chunk_ids": ["chk_events_0001", "chk_noise_0004"], "cited_artifact_ids": ["art_events_0001"], "answer": "运行事件默认保留七天。"},
+    {"case_id": "case_sse_resume", "ranked_chunk_ids": ["chk_sse_0001", "chk_sse_0002"], "cited_artifact_ids": ["art_sse_0001"], "answer": "客户端携带 Last-Event-ID，从下一条持久事件继续。"},
+    {"case_id": "case_turn_idempotency", "ranked_chunk_ids": ["chk_idempotency_0001"], "cited_artifact_ids": ["art_idempotency_0001"], "answer": "相同幂等请求会返回同一个 Run。"},
+    {"case_id": "case_lease_takeover", "ranked_chunk_ids": ["chk_lease_0001", "chk_lease_0002"], "cited_artifact_ids": ["art_lease_0001"], "answer": "新 Worker 在租约过期后才能接管，并使用更大的 fencing token。"},
+    {"case_id": "case_citation_scope", "ranked_chunk_ids": ["chk_citation_0001", "chk_noise_0005"], "cited_artifact_ids": ["art_citation_0001"], "answer": "最终回答只能引用已选中的证据。"},
+    {"case_id": "case_legal_hold", "ranked_chunk_ids": ["chk_compliance_0001", "chk_compliance_0002"], "cited_artifact_ids": ["art_compliance_0001"], "answer": "legal hold 会阻止删除，直到保全解除。"}
+  ]
+}
