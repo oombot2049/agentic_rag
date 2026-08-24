@@ -1,0 +1,12 @@
+apiVersion: 1
+providers:
+  - name: agenticrag
+    orgId: 1
+    folder: AgenticRAG
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/agenticrag
+      foldersFromFilesStructure: false

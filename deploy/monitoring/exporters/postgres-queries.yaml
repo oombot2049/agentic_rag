@@ -1,0 +1,12 @@
+collector_name: agenticrag_queue
+metrics:
+  - metric_name: agenticrag_run_queue_messages
+    type: gauge
+    help: Durable Run queue messages by bounded lifecycle status.
+    key_labels: [status]
+    values: [messages]
+    query: |
+      SELECT status, count(*)::double precision AS messages
+      FROM run_queue_messages
+      WHERE status IN ('READY','LEASED','ACKED','DEAD')
+      GROUP BY status

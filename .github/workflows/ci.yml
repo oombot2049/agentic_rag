@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  quality:
+    name: Quality (Go ${{ matrix.go }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.26.x', '1.27.x']
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Locate module cache
+        id: gomodcache
+        run: echo "path=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5.0.5
+        with:
+          path: ${{ steps.gomodcache.outputs.path }}
+          key: gomod-${{ runner.os }}-${{ matrix.go }}-${{ hashFiles('go.sum') }}
+      - run: go mod download
+      - run: go mod verify
+      - run: ./ci/check-format.sh
+      - run: go vet ./...
+      - run: go test -count=1 -shuffle=on ./...
+      - run: make eval
+      - run: make load-contract
+      - name: Reproducible build
+        run: make build VERSION=ci COMMIT="$GITHUB_SHA" BUILD_DATE="1970-01-01T00:00:00Z"
+
+  static-analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - run: go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+      - run: staticcheck ./...
+      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: actionlint
+
+  race-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      AGENTICRAG_REQUIRE_DOCKER: '1'
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache: false
+      - run: docker info
+      - run: go test -count=1 -v ./internal/platform/postgres ./internal/platform/redis
+      - run: go test -tags=integration -count=1 -v ./tests/integration
+      - run: go test -tags=e2e -count=1 -v ./tests/e2e
+      - run: go test -race -tags=concurrency -count=1 -v ./tests/concurrency
+      - run: go test -race -count=1 ./...
+
+  vulnerability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache: false
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+      - run: govulncheck ./...
+
+  gate-self-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.27.x'
+          cache: false
+      - run: ./ci/verify-gates.sh

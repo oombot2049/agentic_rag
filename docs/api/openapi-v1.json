@@ -1,0 +1,303 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AgenticRAG API",
+    "version": "0.1.0",
+    "description": "Currently composed v1 HTTP contract for linear multi-tenant Session, Turn, Run, durable lifecycle SSE, and transient assistant output."
+  },
+  "servers": [{ "url": "/" }],
+  "security": [{ "bearerAuth": [] }, { "apiKeyAuth": [] }],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "health",
+        "security": [],
+        "responses": {
+          "204": { "description": "PostgreSQL health check passed" },
+          "503": { "description": "PostgreSQL health check failed" }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSessionRequest" } } } },
+        "responses": {
+          "201": { "description": "Session created or replayed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "500": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}": {
+      "get": {
+        "operationId": "getSession",
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "responses": {
+          "200": { "description": "Session snapshot", "headers": { "ETag": { "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } } },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/messages": {
+      "get": {
+        "operationId": "listMessages",
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionId" },
+          { "$ref": "#/components/parameters/Cursor" },
+          { "$ref": "#/components/parameters/PageSize" }
+        ],
+        "responses": {
+          "200": { "description": "Committed conversation Messages", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MessagePage" } } } },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/turns": {
+      "post": {
+        "operationId": "createTurn",
+        "parameters": [
+          { "$ref": "#/components/parameters/SessionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTurnRequest" } } } },
+        "responses": {
+          "202": { "description": "Turn and initial Run durably reserved", "headers": { "Location": { "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTurnResponse" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/turns/{turn_id}": {
+      "get": {
+        "operationId": "getTurn",
+        "parameters": [{ "$ref": "#/components/parameters/TurnId" }],
+        "responses": {
+          "200": { "description": "Turn snapshot", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Turn" } } } },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "getRun",
+        "parameters": [{ "$ref": "#/components/parameters/RunId" }],
+        "responses": {
+          "200": { "description": "Run snapshot", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Run" } } } },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "streamRunEvents",
+        "parameters": [
+          { "$ref": "#/components/parameters/RunId" },
+          { "name": "Last-Event-ID", "in": "header", "required": false, "schema": { "type": "integer", "format": "int64", "minimum": 0 } }
+        ],
+        "responses": {
+          "200": { "description": "Durable lifecycle SSE stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "404": { "$ref": "#/components/responses/Error" },
+          "410": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/runs/{run_id}/output": {
+      "get": {
+        "operationId": "streamRunOutput",
+        "parameters": [
+          { "$ref": "#/components/parameters/RunId" },
+          { "name": "Last-Event-ID", "in": "header", "required": false, "description": "Last successfully processed output event ID. Omit on the first connection; the server starts from 0-0. This short-lived Redis Stream cursor is not interchangeable with the durable /events cursor.", "schema": { "type": "string", "pattern": "^(0|[1-9][0-9]*)-0$" } }
+        ],
+        "responses": {
+          "200": { "description": "Transient assistant output SSE stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "404": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/v1/runs/{run_id}:cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "parameters": [
+          { "$ref": "#/components/parameters/RunId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "202": { "description": "Cancellation durably requested; request body must be empty", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CancelRunResponse" } } } },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "Opaque development or deployment-provided bearer credential; JWT is not implied" },
+      "apiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-API-Key", "description": "Production PostgreSQL-backed API key" }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 16, "maxLength": 128 } },
+      "SessionId": { "name": "session_id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/ResourceId" } },
+      "TurnId": { "name": "turn_id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/ResourceId" } },
+      "RunId": { "name": "run_id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/ResourceId" } },
+      "Cursor": { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 512 } },
+      "PageSize": { "name": "page_size", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+    },
+    "responses": {
+      "Error": { "description": "Stable error envelope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } } }
+    },
+    "schemas": {
+      "ResourceId": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$" },
+      "Timestamp": { "type": "string", "format": "date-time" },
+      "Session": {
+        "type": "object",
+        "required": ["id", "context_version", "row_version", "next_turn_sequence", "committed_turn_sequence", "created_at", "updated_at"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ResourceId" },
+          "context_version": { "type": "integer", "format": "int64", "minimum": 0 },
+          "row_version": { "type": "integer", "format": "int64", "minimum": 0 },
+          "next_turn_sequence": { "type": "integer", "format": "int64", "minimum": 1 },
+          "committed_turn_sequence": { "type": "integer", "format": "int64", "minimum": 0 },
+          "active_run_id": { "oneOf": [{ "$ref": "#/components/schemas/ResourceId" }, { "type": "null" }] },
+          "head_turn_id": { "oneOf": [{ "$ref": "#/components/schemas/ResourceId" }, { "type": "null" }] },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "updated_at": { "$ref": "#/components/schemas/Timestamp" }
+        },
+        "additionalProperties": false
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "properties": { "metadata": { "type": "object", "additionalProperties": { "type": "string", "maxLength": 256 }, "maxProperties": 20 } },
+        "additionalProperties": false
+      },
+      "MessageInput": {
+        "type": "object",
+        "required": ["content"],
+        "properties": { "content": { "type": "string", "minLength": 1, "maxLength": 131072 } },
+        "additionalProperties": false
+      },
+      "ExecutionOptions": {
+        "type": "object",
+        "properties": { "max_steps": { "type": "integer", "minimum": 1, "maximum": 20, "default": 12 } },
+        "additionalProperties": false
+      },
+      "CreateTurnRequest": {
+        "type": "object",
+        "required": ["expected_context_version", "message"],
+        "properties": {
+          "expected_context_version": { "type": "integer", "format": "int64", "minimum": 0 },
+          "message": { "$ref": "#/components/schemas/MessageInput" },
+          "execution": { "$ref": "#/components/schemas/ExecutionOptions" }
+        },
+        "additionalProperties": false
+      },
+      "CreateTurnResponse": {
+        "type": "object",
+        "required": ["session_id", "turn_id", "run_id", "user_message_id", "turn_sequence", "base_context_version", "status", "events_url", "output_url"],
+        "properties": {
+          "session_id": { "$ref": "#/components/schemas/ResourceId" },
+          "turn_id": { "$ref": "#/components/schemas/ResourceId" },
+          "run_id": { "$ref": "#/components/schemas/ResourceId" },
+          "user_message_id": { "$ref": "#/components/schemas/ResourceId" },
+          "turn_sequence": { "type": "integer", "format": "int64", "minimum": 1 },
+          "base_context_version": { "type": "integer", "format": "int64", "minimum": 0 },
+          "status": { "const": "QUEUED" },
+          "events_url": { "type": "string" },
+          "output_url": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "CancelRunResponse": {
+        "type": "object",
+        "required": ["run_id", "status", "cancellation_requested", "terminal"],
+        "properties": {
+          "run_id": { "$ref": "#/components/schemas/ResourceId" },
+          "status": { "type": "string", "enum": ["CANCEL_REQUESTED", "CANCELLED", "SUCCEEDED", "SELECTED", "SUPERSEDED", "FAILED", "TIMED_OUT"] },
+          "cancellation_requested": { "type": "boolean" },
+          "terminal": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "Turn": {
+        "type": "object",
+        "required": ["id", "session_id", "turn_sequence", "base_context_version", "user_message_id", "status", "run_ids", "created_at"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ResourceId" },
+          "session_id": { "$ref": "#/components/schemas/ResourceId" },
+          "turn_sequence": { "type": "integer", "format": "int64", "minimum": 1 },
+          "base_context_version": { "type": "integer", "format": "int64", "minimum": 0 },
+          "user_message_id": { "$ref": "#/components/schemas/ResourceId" },
+          "selected_run_id": { "oneOf": [{ "$ref": "#/components/schemas/ResourceId" }, { "type": "null" }] },
+          "status": { "type": "string", "enum": ["RUNNING", "COMPLETED", "FAILED", "CANCELLED"] },
+          "run_ids": { "type": "array", "items": { "$ref": "#/components/schemas/ResourceId" } },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "completed_at": { "oneOf": [{ "$ref": "#/components/schemas/Timestamp" }, { "type": "null" }] }
+        },
+        "additionalProperties": false
+      },
+      "Run": {
+        "type": "object",
+        "required": ["id", "session_id", "turn_id", "run_no", "base_context_version", "status", "terminal", "created_at"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ResourceId" },
+          "session_id": { "$ref": "#/components/schemas/ResourceId" },
+          "turn_id": { "$ref": "#/components/schemas/ResourceId" },
+          "run_no": { "type": "integer", "minimum": 1 },
+          "base_context_version": { "type": "integer", "format": "int64", "minimum": 0 },
+          "status": { "type": "string", "enum": ["QUEUED", "RUNNING", "CANCEL_REQUESTED", "SUCCEEDED", "SELECTED", "SUPERSEDED", "FAILED", "CANCELLED", "TIMED_OUT"] },
+          "terminal": { "type": "boolean" },
+          "reason_code": { "oneOf": [{ "type": "string", "maxLength": 128 }, { "type": "null" }] },
+          "final_message_id": { "oneOf": [{ "$ref": "#/components/schemas/ResourceId" }, { "type": "null" }] },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "started_at": { "oneOf": [{ "$ref": "#/components/schemas/Timestamp" }, { "type": "null" }] },
+          "completed_at": { "oneOf": [{ "$ref": "#/components/schemas/Timestamp" }, { "type": "null" }] }
+        },
+        "additionalProperties": false
+      },
+      "Message": {
+        "type": "object",
+        "required": ["id", "session_id", "turn_id", "role", "content", "created_at"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/ResourceId" },
+          "session_id": { "$ref": "#/components/schemas/ResourceId" },
+          "turn_id": { "$ref": "#/components/schemas/ResourceId" },
+          "run_id": { "oneOf": [{ "$ref": "#/components/schemas/ResourceId" }, { "type": "null" }] },
+          "role": { "type": "string", "enum": ["USER", "ASSISTANT"] },
+          "content": { "type": "string" },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" }
+        },
+        "additionalProperties": false
+      },
+      "MessagePage": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Message" } },
+          "next_cursor": { "oneOf": [{ "type": "string" }, { "type": "null" }] }
+        },
+        "additionalProperties": false
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "$ref": "#/components/schemas/Error" } },
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "required": ["code", "message", "retryable"],
+        "properties": {
+          "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+          "message": { "type": "string" },
+          "retryable": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

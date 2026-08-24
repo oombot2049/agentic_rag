@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "dataset_id": "agenticrag_rag_v1",
+  "revision": "revision_0001",
+  "top_k": 5,
+  "cases": [
+    {
+      "id": "case_refund_eta",
+      "query": "退款通常多久能到账？",
+      "relevant_chunk_ids": ["chk_refund_0001", "chk_refund_0002"],
+      "expected_citation_ids": ["art_refund_0001"],
+      "claims": [{"id": "claim_refund_eta", "match_any": ["五个工作日", "5个工作日"], "supporting_artifact_ids": ["art_refund_0001"]}],
+      "contradictions": ["当天到账", "立即到账"],
+      "provenance": "human/support-policy-2026-08#refund-settlement",
+      "human_reviewed": true,
+      "review_note": "支持团队复核了退款到账时限和反例。"
+    },
+    {
+      "id": "case_password_policy",
+      "query": "管理员密码最少要多少位？",
+      "relevant_chunk_ids": ["chk_security_0001"],
+      "expected_citation_ids": ["art_security_0001"],
+      "claims": [{"id": "claim_password_length", "match_any": ["至少十二个字符", "至少12个字符"], "supporting_artifact_ids": ["art_security_0001"]}],
+      "contradictions": ["至少六个字符", "无需密码"],
+      "provenance": "docs/security/password-policy#length",
+      "human_reviewed": false
+    },
+    {
+      "id": "case_tenant_filter",
+      "query": "向量检索怎样保证不会召回其他租户的数据？",
+      "relevant_chunk_ids": ["chk_tenant_0001", "chk_tenant_0002"],
+      "expected_citation_ids": ["art_tenant_0001"],
+      "claims": [{"id": "claim_tenant_filter", "match_any": ["强制租户过滤", "tenant_id 过滤"], "supporting_artifact_ids": ["art_tenant_0001"]}],
+      "contradictions": ["依赖客户端过滤", "跨租户共享结果"],
+      "provenance": "human/architecture-review#retrieval-isolation",
+      "human_reviewed": true,
+      "review_note": "架构评审确认过滤由服务端构造并在索引侧执行。"
+    },
+    {
+      "id": "case_invoice_date",
+      "query": "SaaS 账单每月什么时候生成？",
+      "relevant_chunk_ids": ["chk_billing_0001"],
+      "expected_citation_ids": ["art_billing_0001"],
+      "claims": [{"id": "claim_invoice_date", "match_any": ["每月一日", "每月1日"], "supporting_artifact_ids": ["art_billing_0001"]}],
+      "contradictions": ["每月最后一天", "每天生成"],
+      "provenance": "docs/billing/invoices#schedule",
+      "human_reviewed": false
+    },
+    {
+      "id": "case_event_retention",
+      "query": "运行事件默认保留多久？",
+      "relevant_chunk_ids": ["chk_events_0001"],
+      "expected_citation_ids": ["art_events_0001"],
+      "claims": [{"id": "claim_event_retention", "match_any": ["默认保留七天", "默认保留7天"], "supporting_artifact_ids": ["art_events_0001"]}],
+      "contradictions": ["永久保留", "只保留一分钟"],
+      "provenance": "docs/api/sse#retention",
+      "human_reviewed": false
+    },
+    {
+      "id": "case_sse_resume",
+      "query": "SSE 断线后客户端如何续传？",
+      "relevant_chunk_ids": ["chk_sse_0001", "chk_sse_0002"],
+      "expected_citation_ids": ["art_sse_0001"],
+      "claims": [{"id": "claim_sse_resume", "match_any": ["Last-Event-ID", "最后事件序号"], "supporting_artifact_ids": ["art_sse_0001"]}],
+      "contradictions": ["只能重新开始", "无法恢复"],
+      "provenance": "docs/api/sse#resume",
+      "human_reviewed": false
+    },
+    {
+      "id": "case_turn_idempotency",
+      "query": "创建 Turn 请求超时后重试会不会创建两个 Run？",
+      "relevant_chunk_ids": ["chk_idempotency_0001"],
+      "expected_citation_ids": ["art_idempotency_0001"],
+      "claims": [{"id": "claim_turn_replay", "match_any": ["返回同一个 Run", "返回同一 Run"], "supporting_artifact_ids": ["art_idempotency_0001"]}],
+      "contradictions": ["每次创建新 Run", "可能重复提交"],
+      "provenance": "docs/api/turns#idempotency",
+      "human_reviewed": false
+    },
+    {
+      "id": "case_lease_takeover",
+      "query": "新 Worker 什么时候可以接管一个 Run？",
+      "relevant_chunk_ids": ["chk_lease_0001", "chk_lease_0002"],
+      "expected_citation_ids": ["art_lease_0001"],
+      "claims": [{"id": "claim_lease_takeover", "match_any": ["租约过期后才能接管", "lease 过期后接管"], "supporting_artifact_ids": ["art_lease_0001"]}],
+      "contradictions": ["随时抢占", "忽略 fencing token"],
+      "provenance": "human/runtime-review#lease-takeover",
+      "human_reviewed": true,
+      "review_note": "运行时评审确认接管时点和 fencing token 约束。"
+    },
+    {
+      "id": "case_citation_scope",
+      "query": "最终回答的引用可以指向未选中的检索结果吗？",
+      "relevant_chunk_ids": ["chk_citation_0001"],
+      "expected_citation_ids": ["art_citation_0001"],
+      "claims": [{"id": "claim_citation_scope", "match_any": ["只能引用已选中的证据", "引用必须指向已选证据"], "supporting_artifact_ids": ["art_citation_0001"]}],
+      "contradictions": ["可以编造引用", "可以引用未检索内容"],
+      "provenance": "docs/rag/citations#selected-evidence",
+      "human_reviewed": false
+    },
+    {
+      "id": "case_legal_hold",
+      "query": "处于 legal hold 的 Session 会被保留策略删除吗？",
+      "relevant_chunk_ids": ["chk_compliance_0001", "chk_compliance_0002"],
+      "expected_citation_ids": ["art_compliance_0001"],
+      "claims": [{"id": "claim_legal_hold", "match_any": ["legal hold 会阻止删除", "法律保全会阻止删除"], "supporting_artifact_ids": ["art_compliance_0001"]}],
+      "contradictions": ["仍会立即删除", "legal hold 不生效"],
+      "provenance": "docs/compliance/deletion#legal-hold",
+      "human_reviewed": false
+    }
+  ]
+}

@@ -1,0 +1,199 @@
+groups:
+  - name: agenticrag.slo
+    interval: 30s
+    rules:
+      - alert: AgenticRAGAvailabilityFastBurn
+        expr: |
+          (sum(rate(agenticrag_sli_events_total{sli="turn_command",classification="bad"}[5m])) / clamp_min(sum(rate(agenticrag_sli_events_total{sli="turn_command",classification=~"good|bad"}[5m])), 0.001) > 0.0144)
+          and
+          (sum(rate(agenticrag_sli_events_total{sli="turn_command",classification="bad"}[1h])) / clamp_min(sum(rate(agenticrag_sli_events_total{sli="turn_command",classification=~"good|bad"}[1h])), 0.001) > 0.0144)
+        for: 2m
+        labels: &p0_labels
+          service: agenticrag
+          component: api
+          severity: page
+          priority: p0
+          owner: sre
+        annotations:
+          summary: API availability is consuming the monthly budget at least 14.4x
+          impact: The 99.9% availability budget may be exhausted within hours.
+          action: Stop the active rollout, identify the dominant 5xx path, and shed optional work.
+          dashboard: agenticrag-slo
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragavailabilityfastburn
+      - alert: AgenticRAGAvailabilitySustainedBurn
+        expr: |
+          (sum(rate(agenticrag_sli_events_total{sli="turn_command",classification="bad"}[30m])) / clamp_min(sum(rate(agenticrag_sli_events_total{sli="turn_command",classification=~"good|bad"}[30m])), 0.001) > 0.006)
+          and
+          (sum(rate(agenticrag_sli_events_total{sli="turn_command",classification="bad"}[6h])) / clamp_min(sum(rate(agenticrag_sli_events_total{sli="turn_command",classification=~"good|bad"}[6h])), 0.001) > 0.006)
+        for: 5m
+        labels: *p0_labels
+        annotations:
+          summary: API availability is consuming the monthly budget at least 6x
+          impact: A persistent client-visible failure is exhausting error budget.
+          action: Freeze feature rollout and mitigate the failing route or dependency.
+          dashboard: agenticrag-slo
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragavailabilitysustainedburn
+      - alert: AgenticRAGHTTPP99LatencyHigh
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(agenticrag_http_request_duration_seconds_bucket[10m]))) > 2
+        for: 10m
+        labels: *p0_labels
+        annotations:
+          summary: API p99 latency exceeds the 2 second command deadline
+          impact: Commands may time out and retry, amplifying load.
+          action: Stop rollout and reduce optional ingestion or speculative Run work.
+          dashboard: agenticrag-latency
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticraghttpp99latencyhigh
+      - alert: AgenticRAGRunP99LatencyHigh
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(agenticrag_run_duration_seconds_bucket{outcome="succeeded"}[10m]))) > 120
+        for: 10m
+        labels: *p0_labels
+        annotations:
+          summary: Successful Run p99 exceeds the 120 second deadline
+          impact: Accepted Runs are not terminalizing within the hard objective.
+          action: Constrain new Runs and isolate queue, provider, or worker delay.
+          dashboard: agenticrag-latency
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragrunp99latencyhigh
+
+  - name: agenticrag.queue
+    interval: 30s
+    rules:
+      - alert: AgenticRAGQueueBacklogHigh
+        expr: sum(agenticrag_run_queue_messages{status=~"READY|LEASED"}) > 3000
+        for: 10m
+        labels:
+          service: agenticrag
+          component: queue
+          severity: page
+          priority: p0
+          owner: sre
+        annotations:
+          summary: Durable Run backlog exceeds the sustained capacity boundary
+          impact: Queue delay will consume the Run deadline and may reach the 6000 hard cap.
+          action: Shed ingestion, stop speculative Runs, and restore worker or dependency capacity.
+          dashboard: agenticrag-queue
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragqueuebackloghigh
+      - alert: AgenticRAGQueueWaitP95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(agenticrag_run_queue_wait_seconds_bucket[10m]))) > 10
+        for: 10m
+        labels:
+          service: agenticrag
+          component: queue
+          severity: ticket
+          priority: p1
+          owner: sre
+        annotations:
+          summary: Run queue wait p95 exceeds its 10 second budget
+          impact: End-to-end Run latency has lost its queue budget.
+          action: Compare backlog, active workers, claim failures, and provider saturation.
+          dashboard: agenticrag-queue
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragqueuewaitp95high
+      - alert: AgenticRAGWorkerSaturation
+        expr: sum(agenticrag_worker_active_runs) > 3800
+        for: 5m
+        labels:
+          service: agenticrag
+          component: worker
+          severity: page
+          priority: p0
+          owner: sre
+        annotations:
+          summary: Active Runs exceed 95 percent of the 4000 admission cap
+          impact: The deployment has almost no recovery headroom.
+          action: Enable critical admission mode and preserve capacity for cancel and recovery.
+          dashboard: agenticrag-workers
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragworkersaturation
+
+  - name: agenticrag.cost
+    interval: 1m
+    rules:
+      - alert: AgenticRAGLLMHourlyCostHigh
+        expr: sum(increase(agenticrag_llm_cost_nanos_total[1h])) > 250000000000
+        for: 15m
+        labels:
+          service: agenticrag
+          component: llm
+          severity: ticket
+          priority: p1
+          owner: finops
+        annotations:
+          summary: Estimated LLM cost exceeds 250 currency units per hour
+          impact: Spend is above the initial operational envelope; billing ledger remains authoritative.
+          action: Reconcile traffic, token volume, model mix, retries, and the billing ledger before changing policy.
+          dashboard: agenticrag-cost
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragllmhourlycosthigh
+
+  - name: agenticrag.dependencies.postgres
+    interval: 30s
+    rules:
+      - alert: AgenticRAGPostgresUnavailable
+        expr: up{job="agenticrag-postgres"} == 0
+        for: 2m
+        labels: &dependency_labels
+          service: agenticrag
+          component: dependency
+          severity: page
+          priority: p0
+          owner: sre
+        annotations:
+          summary: PostgreSQL authority is unavailable
+          impact: Durable mutations, leases, queue claims, and final commits are unsafe.
+          action: Reject mutations, preserve reads where safe, and fail over only through the approved database procedure.
+          dashboard: agenticrag-dependencies
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragpostgresunavailable
+  - name: agenticrag.dependencies.redis
+    interval: 30s
+    rules:
+      - alert: AgenticRAGRedisUnavailable
+        expr: up{job="agenticrag-redis"} == 0
+        for: 2m
+        labels: *dependency_labels
+        annotations:
+          summary: Redis coordination and replay service is unavailable
+          impact: SSE live delivery, quota admission, and cache paths are degraded.
+          action: Preserve PostgreSQL authority, disable cache-dependent optimization, and restore Redis without clearing keys.
+          dashboard: agenticrag-dependencies
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragredisunavailable
+  - name: agenticrag.dependencies.object
+    interval: 30s
+    rules:
+      - alert: AgenticRAGObjectStorageUnavailable
+        expr: probe_success{job="agenticrag-object-storage"} == 0
+        for: 5m
+        labels: *dependency_labels
+        annotations:
+          summary: Object storage synthetic health probe is failing
+          impact: Artifact reads/writes and evidence payload access may fail.
+          action: Stop artifact-producing work, retain metadata, and verify provider status and credentials.
+          dashboard: agenticrag-dependencies
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragobjectstorageunavailable
+  - name: agenticrag.dependencies.search
+    interval: 30s
+    rules:
+      - alert: AgenticRAGSearchIndexUnavailable
+        expr: probe_success{job="agenticrag-search-index"} == 0
+        for: 5m
+        labels: *dependency_labels
+        annotations:
+          summary: Search index synthetic health probe is failing
+          impact: Online retrieval cannot satisfy its availability objective.
+          action: Stop ingestion promotion, preserve ACL filtering, and use only an explicitly approved retrieval fallback.
+          dashboard: agenticrag-dependencies
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragsearchindexunavailable
+  - name: agenticrag.dependencies.llm
+    interval: 30s
+    rules:
+      - alert: AgenticRAGLLMProviderFailureHigh
+        expr: |
+          sum by (provider) (rate(agenticrag_llm_requests_total{outcome=~"failed|timed_out|rate_limited"}[5m]))
+          / clamp_min(sum by (provider) (rate(agenticrag_llm_requests_total[5m])), 0.001) > 0.20
+          and sum by (provider) (rate(agenticrag_llm_requests_total[5m])) > 1
+        for: 5m
+        labels: *dependency_labels
+        annotations:
+          summary: LLM provider failure ratio exceeds 20 percent
+          impact: Agent Runs are likely to fail, time out, or amplify retries.
+          action: Open the provider circuit, stop retries, and use only tenant-approved fallback models.
+          dashboard: agenticrag-dependencies
+          runbook_url: https://github.com/agenticrag/agenticrag/blob/main/deploy/monitoring/runbooks/agenticrag-alerts.md#agenticragllmproviderfailurehigh

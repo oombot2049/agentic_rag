@@ -1,0 +1,1 @@
+{"schema_version":1,"distribution_id":"rag-context-v1","buckets":[{"bytes":256,"weight":20},{"bytes":4096,"weight":55},{"bytes":16384,"weight":20},{"bytes":65536,"weight":5}]}

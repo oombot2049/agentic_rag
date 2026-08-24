@@ -1,0 +1,6 @@
+DROP TABLE tool_approvals;
+ALTER TABLE runs DROP CONSTRAINT runs_status_valid;
+ALTER TABLE runs ADD CONSTRAINT runs_status_valid CHECK (status IN (
+    'QUEUED','RUNNING','CANCEL_REQUESTED','SUCCEEDED','SELECTED',
+    'SUPERSEDED','FAILED','CANCELLED','TIMED_OUT'
+));

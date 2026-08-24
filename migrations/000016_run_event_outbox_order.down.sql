@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS outbox_run_event_pending_sequence_idx;

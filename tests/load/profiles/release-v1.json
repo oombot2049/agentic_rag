@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "profile_id": "release-v1",
+  "evidence_class": "RELEASE",
+  "stages": [
+    {"name":"warmup","duration_seconds":300,"turn_rps":5,"sse_connections":4000,"sse_reconnect_rps":0,"burst":false},
+    {"name":"sustained","duration_seconds":1800,"turn_rps":50,"sse_connections":20000,"sse_reconnect_rps":0,"burst":false},
+    {"name":"burst","duration_seconds":60,"turn_rps":100,"sse_connections":20000,"sse_reconnect_rps":0,"burst":true},
+    {"name":"reconnect","duration_seconds":30,"turn_rps":50,"sse_connections":20000,"sse_reconnect_rps":2000,"burst":false}
+  ],
+  "limits": {
+    "minimum_achieved_ratio":0.98,"maximum_error_ratio":0.0005,
+    "create_turn_p95_ms":250,"create_turn_p99_ms":500,
+    "sse_resume_p95_ms":1000,"sse_resume_p99_ms":3000,
+    "ttft_p95_ms":8000,"ttft_p99_ms":20000,
+    "maximum_sustained_queue_depth":3000,"maximum_burst_queue_depth":6000,"maximum_burst_backlog":3000,
+    "maximum_database_cpu_percent":80,"maximum_service_cpu_percent":85,"maximum_service_rss_bytes":8589934592
+  }
+}
