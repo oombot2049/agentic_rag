@@ -26,7 +26,7 @@ jobs:
         go: ['1.26.x', '1.27.x']
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-go@v7.0.0
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version: ${{ matrix.go }}
           cache: false
@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-go@v7.0.0
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version: '1.26.x'
           cache: false
@@ -68,7 +68,7 @@ jobs:
       AGENTICRAG_REQUIRE_DOCKER: '1'
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-go@v7.0.0
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version: '1.27.x'
           cache: false
@@ -84,7 +84,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-go@v7.0.0
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version: '1.27.x'
           cache: false
@@ -96,7 +96,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-go@v7.0.0
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version: '1.27.x'
           cache: false
